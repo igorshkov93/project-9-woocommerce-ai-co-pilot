@@ -1,0 +1,22 @@
+# Secrets
+.env
+*.pem
+*.key
+
+# n8n / Qdrant runtime data
+docker/n8n_data/
+docker/qdrant_storage/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
