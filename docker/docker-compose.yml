@@ -9,6 +9,9 @@ services:
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
       - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
       - TZ=${TZ}
+      - N8N_HOST=${N8N_HOST}
+      - N8N_PROTOCOL=https
+      - WEBHOOK_URL=${WEBHOOK_URL}
       - N8N_PORT=5678
       - N8N_SECURE_COOKIE=false
       - N8N_RUNNERS_ENABLED=true
@@ -18,8 +21,21 @@ services:
       - ./n8n_data:/home/node/.n8n
     extra_hosts:
       - "host.docker.internal:host-gateway"
+      - "woocommerceautomationtraining.local:host-gateway"
     depends_on:
       - qdrant
+    networks:
+      - copilot
+
+  ngrok:
+    image: ngrok/ngrok:3
+    container_name: woo-copilot-ngrok
+    restart: unless-stopped
+    command: http n8n:5678 --url=https://${NGROK_DOMAIN} --log=stdout
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    depends_on:
+      - n8n
     networks:
       - copilot
 
