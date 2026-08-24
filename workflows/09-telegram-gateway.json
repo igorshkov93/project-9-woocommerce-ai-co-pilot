@@ -1,0 +1,195 @@
+{
+  "name": "09-telegram-gateway",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        48
+      ],
+      "id": "891c3072-3693-4bad-b268-314f974ab033",
+      "name": "Telegram Trigger",
+      "webhookId": "__REPLACE_WITH_YOUR_WEBHOOK_ID__",
+      "credentials": {
+        "telegramApi": {
+          "id": "__REPLACE_WITH_YOUR_CREDENTIAL_ID__",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ 'echo: ' + $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        608,
+        -96
+      ],
+      "id": "be11de2e-109b-4374-a560-0353dda6d6aa",
+      "name": "echo-reply",
+      "webhookId": "__REPLACE_WITH_YOUR_WEBHOOK_ID__",
+      "credentials": {
+        "telegramApi": {
+          "id": "__REPLACE_WITH_YOUR_CREDENTIAL_ID__",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fail-closed access control. Only chat IDs listed in the\n// TELEGRAM_OWNER_CHAT_ID env var may use this bot.\n// This node only classifies; routing happens in the IF node downstream.\nconst raw = $env.TELEGRAM_OWNER_CHAT_ID || '';\nconst allowed = raw.split(',').map((s) => s.trim()).filter(Boolean);\n\nconst update = $input.first().json;\nconst source = update.message ?? update.callback_query?.message ?? {};\nconst from = update.message?.from ?? update.callback_query?.from ?? {};\n\nconst chatId = source.chat?.id;\nconst userId = from.id;\nconst text = update.message?.text ?? update.callback_query?.data ?? '';\n\nconst isAllowed = chatId !== undefined && allowed.includes(String(chatId));\n\nreturn [\n  {\n    json: {\n      allowed: isAllowed,\n      reason: isAllowed ? 'ok' : 'chat_id_not_in_whitelist',\n      chatId,\n      userId,\n      text,\n      updateId: update.update_id,\n      receivedAt: new Date().toISOString(),\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        48
+      ],
+      "id": "bedde8e5-7f84-4de1-b7bf-f074118b90d7",
+      "name": "guard-whitelist"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7a85629a-31b9-4390-b861-2d464377526e",
+              "leftValue": "={{ $json.allowed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        416,
+        48
+      ],
+      "id": "2a945844-3581-442c-b766-fb68b11488ad",
+      "name": "route-access"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        624,
+        144
+      ],
+      "id": "ba02bf78-51a6-4b89-9bed-f73ce6884e72",
+      "name": "access-denied"
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "guard-whitelist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "echo-reply": {
+      "main": [
+        []
+      ]
+    },
+    "guard-whitelist": {
+      "main": [
+        [
+          {
+            "node": "route-access",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route-access": {
+      "main": [
+        [
+          {
+            "node": "echo-reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "access-denied",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "activeVersionId": "2414ca74-2c7b-4c02-ab89-34b03956dba6",
+  "versionCounter": 86,
+  "triggerCount": 1,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-08-21T13:57:10.612Z",
+      "createdAt": "2026-08-21T13:57:10.612Z",
+      "role": "workflow:owner",
+      "workflowId": "0GFyIxnDG1QAKLul",
+      "projectId": "8Oqxz0o8Y6IBx0yZ",
+      "project": {
+        "updatedAt": "2026-08-19T14:06:29.144Z",
+        "createdAt": "2026-08-19T13:10:12.649Z",
+        "id": "8Oqxz0o8Y6IBx0yZ",
+        "name": "Igor Igor <random@test.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "aa9beea7-9e56-4f01-904a-a90d5461d2b6"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}
