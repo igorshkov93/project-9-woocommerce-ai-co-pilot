@@ -1,0 +1,4 @@
+requests==2.34.2
+python-dotenv==1.2.3
+qdrant-client==1.19.0
+google-genai==2.14.0

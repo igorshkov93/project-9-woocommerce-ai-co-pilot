@@ -19,6 +19,13 @@ services:
       - N8N_PERSONALIZATION_ENABLED=false
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
       - TELEGRAM_OWNER_CHAT_ID=${TELEGRAM_OWNER_CHAT_ID}
+      # Service name inside the compose network, not the host address.
+      # Host-side scripts use QDRANT_URL from .env (http://localhost:6333).
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - EMBEDDING_DIM=${EMBEDDING_DIM}
     volumes:
       - ./n8n_data:/home/node/.n8n
     extra_hosts:
@@ -28,6 +35,7 @@ services:
       - qdrant
     networks:
       - copilot
+
   ngrok:
     image: ngrok/ngrok:3
     container_name: woo-copilot-ngrok
@@ -39,6 +47,7 @@ services:
       - n8n
     networks:
       - copilot
+
   qdrant:
     image: qdrant/qdrant:v1.19.0
     container_name: woo-copilot-qdrant
@@ -50,6 +59,7 @@ services:
       - ./qdrant_storage:/qdrant/storage
     networks:
       - copilot
+
 networks:
   copilot:
     driver: bridge

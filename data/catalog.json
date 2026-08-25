@@ -1,0 +1,508 @@
+{
+  "generated_at": "2026-08-24T10:35:22.566818+00:00",
+  "source": "https://woocommerceautomationtraining.local/wp-json",
+  "stats": {
+    "products": 24,
+    "categories_total": 44,
+    "categories_indexed": 7
+  },
+  "products": [
+    {
+      "entity_type": "product",
+      "entity_id": 2869,
+      "name": "Wireless Ergonomic Mouse",
+      "slug": "wireless-ergonomic-mouse",
+      "sku": "ELEC-MOUSE-01",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "29.00",
+      "stock_status": "instock",
+      "category_ids": [
+        67
+      ],
+      "category_names": [
+        "Electronics"
+      ],
+      "description": "Silent vertical mouse for all-day desk work."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2868,
+      "name": "USB-C Hub 7-in-1",
+      "slug": "usb-c-hub-7-in-1",
+      "sku": "ELEC-HUB-01",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "39.00",
+      "stock_status": "instock",
+      "category_ids": [
+        67
+      ],
+      "category_names": [
+        "Electronics"
+      ],
+      "description": "Seven port USB-C hub with HDMI and card readers."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2867,
+      "name": "Power Bank 20000mAh",
+      "slug": "power-bank-20000mah",
+      "sku": "ELEC-POWER-01",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "45.00",
+      "stock_status": "instock",
+      "category_ids": [
+        67
+      ],
+      "category_names": [
+        "Electronics"
+      ],
+      "description": "High capacity power bank with fast USB-C charging."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2866,
+      "name": "Portable Bluetooth Speaker",
+      "slug": "portable-bluetooth-speaker",
+      "sku": "ELEC-SPEAKER-01",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "59.00",
+      "stock_status": "instock",
+      "category_ids": [
+        67
+      ],
+      "category_names": [
+        "Electronics"
+      ],
+      "description": "Rugged portable speaker with twelve hour battery."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2865,
+      "name": "Smart Watch Series 5",
+      "slug": "smart-watch-series-5",
+      "sku": "ELEC-WATCH-01",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "199.00",
+      "stock_status": "instock",
+      "category_ids": [
+        67
+      ],
+      "category_names": [
+        "Electronics"
+      ],
+      "description": "Fitness smartwatch with heart rate and GPS tracking."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2864,
+      "name": "Wireless Earbuds Pro",
+      "slug": "wireless-earbuds-pro",
+      "sku": "ELEC-EARBUD-01",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "79.00",
+      "stock_status": "instock",
+      "category_ids": [
+        67
+      ],
+      "category_names": [
+        "Electronics"
+      ],
+      "description": "True wireless earbuds with active noise cancellation."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2840,
+      "name": "WordPress Pennant",
+      "slug": "wordpress-pennant",
+      "sku": "wp-pennant",
+      "product_type": "external",
+      "status": "publish",
+      "price": "11.05",
+      "stock_status": "instock",
+      "category_ids": [
+        58
+      ],
+      "category_names": [
+        "Decor"
+      ],
+      "description": "This is an external product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2839,
+      "name": "Logo Collection",
+      "slug": "logo-collection",
+      "sku": "logo-collection",
+      "product_type": "grouped",
+      "status": "publish",
+      "price": "18",
+      "stock_status": "instock",
+      "category_ids": [
+        16
+      ],
+      "category_names": [
+        "Clothing"
+      ],
+      "description": "This is a grouped product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2838,
+      "name": "Beanie with Logo",
+      "slug": "beanie-with-logo",
+      "sku": "Woo-beanie-logo",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "18",
+      "stock_status": "instock",
+      "category_ids": [
+        56
+      ],
+      "category_names": [
+        "Accessories"
+      ],
+      "description": "This is a simple product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2837,
+      "name": "T-Shirt with Logo",
+      "slug": "t-shirt-with-logo",
+      "sku": "Woo-tshirt-logo",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "18",
+      "stock_status": "instock",
+      "category_ids": [
+        54
+      ],
+      "category_names": [
+        "Tshirts"
+      ],
+      "description": "This is a simple product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2830,
+      "name": "Single",
+      "slug": "single",
+      "sku": "woo-single",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "2",
+      "stock_status": "instock",
+      "category_ids": [
+        57
+      ],
+      "category_names": [
+        "Music"
+      ],
+      "description": "This is a simple, virtual product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2829,
+      "name": "Album",
+      "slug": "album",
+      "sku": "woo-album",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "15",
+      "stock_status": "instock",
+      "category_ids": [
+        57
+      ],
+      "category_names": [
+        "Music"
+      ],
+      "description": "This is a simple, virtual product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2828,
+      "name": "Polo",
+      "slug": "polo",
+      "sku": "woo-polo",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "20",
+      "stock_status": "instock",
+      "category_ids": [
+        54
+      ],
+      "category_names": [
+        "Tshirts"
+      ],
+      "description": "This is a simple product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2827,
+      "name": "Long Sleeve Tee",
+      "slug": "long-sleeve-tee",
+      "sku": "woo-long-sleeve-tee",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "25",
+      "stock_status": "instock",
+      "category_ids": [
+        54
+      ],
+      "category_names": [
+        "Tshirts"
+      ],
+      "description": "This is a simple product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2826,
+      "name": "Hoodie with Zipper",
+      "slug": "hoodie-with-zipper",
+      "sku": "woo-hoodie-with-zipper",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "45",
+      "stock_status": "instock",
+      "category_ids": [
+        55
+      ],
+      "category_names": [
+        "Hoodies"
+      ],
+      "description": "This is a simple product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2825,
+      "name": "Hoodie with Pocket",
+      "slug": "hoodie-with-pocket",
+      "sku": "woo-hoodie-with-pocket",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "35",
+      "stock_status": "instock",
+      "category_ids": [
+        55
+      ],
+      "category_names": [
+        "Hoodies"
+      ],
+      "description": "This is a simple product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2824,
+      "name": "Sunglasses",
+      "slug": "sunglasses",
+      "sku": "woo-sunglasses",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "90",
+      "stock_status": "instock",
+      "category_ids": [
+        56
+      ],
+      "category_names": [
+        "Accessories"
+      ],
+      "description": "This is a simple product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2823,
+      "name": "Cap",
+      "slug": "cap",
+      "sku": "woo-cap",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "16",
+      "stock_status": "instock",
+      "category_ids": [
+        56
+      ],
+      "category_names": [
+        "Accessories"
+      ],
+      "description": "This is a simple product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2822,
+      "name": "Belt",
+      "slug": "belt",
+      "sku": "woo-belt",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "55",
+      "stock_status": "instock",
+      "category_ids": [
+        56
+      ],
+      "category_names": [
+        "Accessories"
+      ],
+      "description": "This is a simple product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2821,
+      "name": "Beanie",
+      "slug": "beanie",
+      "sku": "woo-beanie",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "18",
+      "stock_status": "instock",
+      "category_ids": [
+        56
+      ],
+      "category_names": [
+        "Accessories"
+      ],
+      "description": "This is a simple product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2820,
+      "name": "T-Shirt",
+      "slug": "t-shirt",
+      "sku": "woo-tshirt",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "18",
+      "stock_status": "instock",
+      "category_ids": [
+        54
+      ],
+      "category_names": [
+        "Tshirts"
+      ],
+      "description": "This is a simple product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2819,
+      "name": "Hoodie with Logo",
+      "slug": "hoodie-with-logo",
+      "sku": "woo-hoodie-with-logo",
+      "product_type": "simple",
+      "status": "publish",
+      "price": "45",
+      "stock_status": "instock",
+      "category_ids": [
+        55
+      ],
+      "category_names": [
+        "Hoodies"
+      ],
+      "description": "This is a simple product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2818,
+      "name": "Hoodie",
+      "slug": "hoodie",
+      "sku": "woo-hoodie",
+      "product_type": "variable",
+      "status": "publish",
+      "price": "42",
+      "stock_status": "instock",
+      "category_ids": [
+        55
+      ],
+      "category_names": [
+        "Hoodies"
+      ],
+      "description": "This is a variable product."
+    },
+    {
+      "entity_type": "product",
+      "entity_id": 2817,
+      "name": "V-Neck T-Shirt",
+      "slug": "v-neck-t-shirt",
+      "sku": "woo-vneck-tee",
+      "product_type": "variable",
+      "status": "publish",
+      "price": "15",
+      "stock_status": "instock",
+      "category_ids": [
+        54
+      ],
+      "category_names": [
+        "Tshirts"
+      ],
+      "description": "This is a variable product."
+    }
+  ],
+  "categories": [
+    {
+      "entity_type": "category",
+      "entity_id": 56,
+      "name": "Accessories",
+      "slug": "accessories",
+      "parent_id": 16,
+      "product_count": 5,
+      "description": ""
+    },
+    {
+      "entity_type": "category",
+      "entity_id": 16,
+      "name": "Clothing",
+      "slug": "clothing",
+      "parent_id": 0,
+      "product_count": 14,
+      "description": ""
+    },
+    {
+      "entity_type": "category",
+      "entity_id": 58,
+      "name": "Decor",
+      "slug": "decor",
+      "parent_id": 0,
+      "product_count": 1,
+      "description": ""
+    },
+    {
+      "entity_type": "category",
+      "entity_id": 67,
+      "name": "Electronics",
+      "slug": "electronics",
+      "parent_id": 0,
+      "product_count": 6,
+      "description": "Consumer electronics: wireless audio, wearables, charging and connectivity accessories."
+    },
+    {
+      "entity_type": "category",
+      "entity_id": 55,
+      "name": "Hoodies",
+      "slug": "hoodies",
+      "parent_id": 16,
+      "product_count": 3,
+      "description": ""
+    },
+    {
+      "entity_type": "category",
+      "entity_id": 57,
+      "name": "Music",
+      "slug": "music",
+      "parent_id": 0,
+      "product_count": 2,
+      "description": ""
+    },
+    {
+      "entity_type": "category",
+      "entity_id": 54,
+      "name": "Tshirts",
+      "slug": "tshirts",
+      "parent_id": 16,
+      "product_count": 5,
+      "description": ""
+    }
+  ]
+}

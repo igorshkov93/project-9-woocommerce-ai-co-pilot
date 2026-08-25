@@ -1,0 +1,242 @@
+{
+  "name": "10-tool-resolve-entity",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"query\": \"Электроника\",\n  \"entity_type\": \"category\",\n  \"limit\": 3\n}"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        96
+      ],
+      "id": "5402bbaa-67a0-4136-a995-44a03837b3c4",
+      "name": "tool-input"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate and normalise the tool arguments before spending an embedding call.\n//\n// The caller is an LLM, so arguments arrive as whatever the model decided to\n// emit: missing fields, wrong types, numbers as strings. Failing here costs\n// nothing; failing after the Gemini call costs quota and latency.\n//\n// This node is the single place that reads the container environment. HTTP\n// nodes can reach $env at runtime, but their expression preview cannot, which\n// makes them awkward to debug and easy to break silently. Reading everything\n// here keeps configuration in one auditable place.\n//\n// A Code node has a single output, so errors are returned as a normal item\n// carrying `ok: false`. Downstream nodes branch on that field via If.\n\nconst ALLOWED_ENTITY_TYPES = ['product', 'category'];\nconst MAX_QUERY_LENGTH = 200;\nconst DEFAULT_LIMIT = 3;\nconst MAX_LIMIT = 10;\n\nconst input = $input.first().json ?? {};\n\nconst rawQuery = typeof input.query === 'string' ? input.query.trim() : '';\nconst rawEntityType =\n  typeof input.entity_type === 'string' ? input.entity_type.trim().toLowerCase() : '';\n\nconst errors = [];\n\nif (!rawQuery) {\n  errors.push('query is required and must be a non-empty string');\n} else if (rawQuery.length > MAX_QUERY_LENGTH) {\n  errors.push(`query must be at most ${MAX_QUERY_LENGTH} characters`);\n}\n\nif (!ALLOWED_ENTITY_TYPES.includes(rawEntityType)) {\n  errors.push(`entity_type must be one of: ${ALLOWED_ENTITY_TYPES.join(', ')}`);\n}\n\n// Models frequently emit numbers as strings, so coerce before validating.\nlet limit = DEFAULT_LIMIT;\nif (input.limit !== undefined && input.limit !== null && input.limit !== '') {\n  const parsed = Number(input.limit);\n  if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_LIMIT) {\n    errors.push(`limit must be an integer between 1 and ${MAX_LIMIT}`);\n  } else {\n    limit = parsed;\n  }\n}\n\nconst model = $env.EMBEDDING_MODEL;\nconst dimension = Number($env.EMBEDDING_DIM);\nconst qdrantUrl = ($env.QDRANT_URL || '').replace(/\\/+$/, '');\nconst collection = $env.QDRANT_COLLECTION;\nconst apiKey = $env.GEMINI_API_KEY;\n\nif (!model) errors.push('EMBEDDING_MODEL is not set in the container environment');\nif (!Number.isInteger(dimension) || dimension < 1) {\n  errors.push('EMBEDDING_DIM is not a positive integer');\n}\nif (!qdrantUrl) errors.push('QDRANT_URL is not set in the container environment');\nif (!collection) errors.push('QDRANT_COLLECTION is not set in the container environment');\nif (!apiKey) errors.push('GEMINI_API_KEY is not set in the container environment');\n\nif (errors.length > 0) {\n  return [\n    {\n      json: {\n        ok: false,\n        status: 'invalid_input',\n        errors,\n        message: `Invalid tool arguments: ${errors.join('; ')}`,\n      },\n    },\n  ];\n}\n\nreturn [\n  {\n    json: {\n      ok: true,\n      query: rawQuery,\n      entity_type: rawEntityType,\n      limit,\n      model,\n      dimension,\n      embed_url: `https://generativelanguage.googleapis.com/v1beta/${model}:embedContent`,\n      search_url: `${qdrantUrl}/collections/${collection}/points/query`,\n      collection,\n      api_key: apiKey,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        96
+      ],
+      "id": "6beaed3b-8a51-40e7-8989-95874e881a28",
+      "name": "validate-input"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.embed_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-goog-api-key",
+              "value": "={{ $json.api_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $json.model, content: { parts: [ { text: $json.query } ] }, taskType: 'RETRIEVAL_QUERY', outputDimensionality: $json.dimension }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        672,
+        0
+      ],
+      "id": "5c67a57c-de96-4357-817e-db00f4522038",
+      "name": "embed-query",
+      "retryOnFail": true,
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('validate-input').first().json.search_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: $json.embedding.values, limit: $('validate-input').first().json.limit, with_payload: true, filter: { must: [ { key: 'entity_type', match: { value: $('validate-input').first().json.entity_type } } ] } }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        896,
+        0
+      ],
+      "id": "e017e950-cad3-4e5d-a5a3-f9acc4d04cf3",
+      "name": "search-qdrant",
+      "retryOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turn raw Qdrant hits into a decision the agent can act on.\n//\n// Thresholds are measured, not guessed. On the verification suite (10.5):\n//   correct hits scored 0.645 - 0.739\n//   nonsense queries scored 0.545 - 0.550\n// The confidence floor sits in the middle of that gap with equal margin on\n// both sides; at 31 points the sample is too small to justify hugging either\n// edge.\n//\n// The ambiguity margin exists because a filtered search always returns\n// something. \"Электроника\" beats the runner-up by only 0.030, so a confident\n// top hit is not the same as an unambiguous one. Below the margin the agent\n// must ask rather than assume - which is exactly what the inline-button\n// confirmation in step 13 is for.\n//\n// Deciding here rather than in the prompt is deliberate: a model asked to\n// interpret raw scores tends to take the first result regardless.\n\nconst MIN_SCORE = 0.6;\nconst MIN_MARGIN = 0.05;\n\nconst context = $('validate-input').first().json;\n\n// The validator short-circuits on bad arguments; pass its verdict through.\nif (context.ok === false) {\n  return [{ json: { status: context.status, message: context.message, errors: context.errors } }];\n}\n\nconst response = $input.first().json ?? {};\nconst points = response?.result?.points ?? [];\n\nconst candidates = points.map((point) => {\n  const payload = point.payload ?? {};\n  return {\n    entity_type: payload.entity_type,\n    entity_id: payload.entity_id,\n    name: payload.name,\n    slug: payload.slug,\n    sku: payload.sku,\n    price: payload.price,\n    product_type: payload.product_type,\n    stock_status: payload.stock_status,\n    category_ids: payload.category_ids ?? [],\n    product_count: payload.product_count,\n    score: Number(point.score.toFixed(4)),\n  };\n});\n\nconst base = {\n  query: context.query,\n  entity_type: context.entity_type,\n  thresholds: { min_score: MIN_SCORE, min_margin: MIN_MARGIN },\n};\n\nif (candidates.length === 0) {\n  return [\n    {\n      json: {\n        ...base,\n        status: 'not_found',\n        match: null,\n        candidates: [],\n        message: `No ${context.entity_type} matches \"${context.query}\".`,\n      },\n    },\n  ];\n}\n\nconst top = candidates[0];\nconst runnerUp = candidates[1] ?? null;\nconst margin = runnerUp ? Number((top.score - runnerUp.score).toFixed(4)) : null;\n\nif (top.score < MIN_SCORE) {\n  return [\n    {\n      json: {\n        ...base,\n        status: 'not_found',\n        match: null,\n        candidates,\n        best_score: top.score,\n        message:\n          `No ${context.entity_type} matches \"${context.query}\" with enough confidence ` +\n          `(best score ${top.score}, minimum ${MIN_SCORE}).`,\n      },\n    },\n  ];\n}\n\n// A runner-up only competes if it clears the confidence floor itself.\n// \"наушники\" put Wireless Earbuds Pro (0.645) ahead of Single (0.599) - a\n// music track sitting barely above the 0.55 noise level. Treating that as a\n// tie would send the agent asking about a candidate nobody meant. Compare\n// this to \"толстовки\", where Clothing (0.649) is the genuine parent category\n// of Hoodies (0.685) and the question is worth asking.\nconst runnerUpCompetes = runnerUp !== null && runnerUp.score >= MIN_SCORE;\n\nif (runnerUpCompetes && margin !== null && margin < MIN_MARGIN) {\n  return [\n    {\n      json: {\n        ...base,\n        status: 'ambiguous',\n        match: null,\n        candidates,\n        margin,\n        message:\n          `Several ${context.entity_type} entries match \"${context.query}\" closely. ` +\n          `Ask the user which one is meant before acting.`,\n      },\n    },\n  ];\n}\n\nreturn [\n  {\n    json: {\n      ...base,\n      status: 'resolved',\n      match: top,\n      candidates,\n      margin,\n      message: `Resolved \"${context.query}\" to ${context.entity_type} ${top.entity_id} (${top.name}).`,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "ec1cb29c-d4df-49c2-bca3-30ddb2360feb",
+      "name": "classify-result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5f6efd35-f236-40f0-8028-cb31d25b19c8",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        96
+      ],
+      "id": "682af3ea-9090-48a9-a2c6-642d77ee9c71",
+      "name": "route-valid"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Terminal node for the rejected-arguments branch.\n//\n// The validator refused the call, so no embedding was requested and no search\n// was run. Returning the verdict in the same shape as classify-result means the\n// agent parses one response format regardless of which branch executed.\n\nconst verdict = $input.first().json ?? {};\n\nreturn [\n  {\n    json: {\n      query: null,\n      entity_type: null,\n      status: verdict.status ?? 'invalid_input',\n      match: null,\n      candidates: [],\n      errors: verdict.errors ?? [],\n      message: verdict.message ?? 'Invalid tool arguments.',\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        192
+      ],
+      "id": "58d298a7-fe2d-4203-a059-779267ce11ea",
+      "name": "invalid-input-response"
+    }
+  ],
+  "connections": {
+    "tool-input": {
+      "main": [
+        [
+          {
+            "node": "validate-input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "validate-input": {
+      "main": [
+        [
+          {
+            "node": "route-valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "embed-query": {
+      "main": [
+        [
+          {
+            "node": "search-qdrant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "search-qdrant": {
+      "main": [
+        [
+          {
+            "node": "classify-result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route-valid": {
+      "main": [
+        [
+          {
+            "node": "embed-query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "invalid-input-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "activeVersionId": "42215c23-cc1d-4b59-bce1-809fc8cd7ed6",
+  "versionCounter": 61,
+  "triggerCount": 0,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-08-25T11:53:29.186Z",
+      "createdAt": "2026-08-25T11:53:29.186Z",
+      "role": "workflow:owner",
+      "workflowId": "mybfI2XKzpsy7MWh",
+      "projectId": "8Oqxz0o8Y6IBx0yZ",
+      "project": {
+        "updatedAt": "2026-08-19T14:06:29.144Z",
+        "createdAt": "2026-08-19T13:10:12.649Z",
+        "id": "8Oqxz0o8Y6IBx0yZ",
+        "name": "Igor Igor <random@test.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "aa9beea7-9e56-4f01-904a-a90d5461d2b6"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "Version 42215c23",
+    "description": ""
+  }
+}
