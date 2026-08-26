@@ -26,6 +26,12 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL}
       - EMBEDDING_DIM=${EMBEDDING_DIM}
+      # WooCommerce REST access for the Step 11 order tools. The store runs
+      # on the host under LocalWP, reachable via the extra_hosts entry below.
+      - WOO_STORE_URL=${WOO_STORE_URL}
+      - WOO_CONSUMER_KEY=${WOO_CONSUMER_KEY}
+      - WOO_CONSUMER_SECRET=${WOO_CONSUMER_SECRET}
+      - BUSINESS_TIMEZONE=${BUSINESS_TIMEZONE}      
     volumes:
       - ./n8n_data:/home/node/.n8n
     extra_hosts:

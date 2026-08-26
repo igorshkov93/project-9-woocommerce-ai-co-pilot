@@ -1,0 +1,315 @@
+{
+  "name": "11-tool-get-orders-summary",
+  "description": null,
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"period\": \"today\",\n  \"date_from\": \"\",\n  \"date_to\": \"\",\n  \"compare\": true\n}"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -192
+      ],
+      "id": "4f5e58f0-2149-4896-9628-adf3dcfa3c76",
+      "name": "tool-input"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Resolves the request window and builds everything the HTTP nodes need.\n//\n// Why this runs in a Code node rather than in the HTTP node expressions:\n// n8n denies $env access inside HTTP node expression previews, so the store\n// URL and credentials are read here and passed downstream as plain fields.\n//\n// Windows are computed in the business timezone, then converted to UTC. The\n// WooCommerce REST API treats `after` and `before` as strictly exclusive, so\n// the lower bound is shifted back one second to keep midnight orders in.\n\nconst PERIODS = ['today', 'yesterday', 'last_7_days', 'last_30_days', 'custom'];\nconst MAX_WINDOW_DAYS = 92;\nconst ALL_STATUSES = 'pending,processing,on-hold,completed,cancelled,refunded,failed';\n\nconst input = $input.first().json;\n\nconst storeUrl = ($env.WOO_STORE_URL || '').replace(/\\/+$/, '');\nconst timezone = $env.BUSINESS_TIMEZONE || 'UTC';\nconst consumerKey = $env.WOO_CONSUMER_KEY || '';\nconst consumerSecret = $env.WOO_CONSUMER_SECRET || '';\n\nfunction invalid(code, message) {\n  return [{ json: { valid: false, status: 'invalid_input', error: { code, message } } }];\n}\n\nif (!storeUrl || !consumerKey || !consumerSecret) {\n  return [{\n    json: {\n      valid: false,\n      status: 'upstream_error',\n      error: { code: 'missing_config', message: 'WooCommerce environment variables are not set' },\n    },\n  }];\n}\n\nconst period = String(input.period ?? 'today').trim();\nif (!PERIODS.includes(period)) {\n  return invalid('bad_period', `period must be one of ${PERIODS.join(', ')}, got '${period}'`);\n}\n\n// Luxon is available in the n8n runtime and handles DST correctly.\nconst today = DateTime.now().setZone(timezone).startOf('day');\n\nlet first;\nlet last;\nlet label;\n\nif (period === 'today') {\n  first = today;\n  last = today;\n  label = 'Today';\n} else if (period === 'yesterday') {\n  first = today.minus({ days: 1 });\n  last = first;\n  label = 'Yesterday';\n} else if (period === 'last_7_days') {\n  first = today.minus({ days: 6 });\n  last = today;\n  label = 'Last 7 days';\n} else if (period === 'last_30_days') {\n  first = today.minus({ days: 29 });\n  last = today;\n  label = 'Last 30 days';\n} else {\n  const rawFrom = String(input.date_from ?? '').trim();\n  const rawTo = String(input.date_to ?? '').trim();\n  if (!rawFrom || !rawTo) {\n    return invalid('missing_dates', 'period=custom requires both date_from and date_to');\n  }\n  const pattern = /^\\d{4}-\\d{2}-\\d{2}$/;\n  for (const [value, field] of [[rawFrom, 'date_from'], [rawTo, 'date_to']]) {\n    if (!pattern.test(value)) {\n      return invalid('bad_date', `${field} must be YYYY-MM-DD, got '${value}'`);\n    }\n  }\n  first = DateTime.fromISO(rawFrom, { zone: timezone }).startOf('day');\n  last = DateTime.fromISO(rawTo, { zone: timezone }).startOf('day');\n  // fromISO accepts the shape but still rejects impossible dates like 2026-08-32.\n  if (!first.isValid) {\n    return invalid('bad_date', `date_from must be YYYY-MM-DD, got '${rawFrom}'`);\n  }\n  if (!last.isValid) {\n    return invalid('bad_date', `date_to must be YYYY-MM-DD, got '${rawTo}'`);\n  }\n  if (last < first) {\n    return invalid('inverted_range', 'date_to must not precede date_from');\n  }\n  const span = last.diff(first, 'days').days + 1;\n  if (span > MAX_WINDOW_DAYS) {\n    return invalid('window_too_large', `window spans ${span} days, maximum is ${MAX_WINDOW_DAYS}`);\n  }\n  label = `${rawFrom} to ${rawTo}`;\n}\n\nconst spanDays = last.diff(first, 'days').days + 1;\n\n// Exclusive bounds: shift `after` back one second so midnight orders survive.\nfunction bounds(windowFirst, windowLast) {\n  const start = windowFirst.startOf('day');\n  const end = windowLast.startOf('day').plus({ days: 1 });\n  return {\n    after: start.minus({ seconds: 1 }).toUTC().toFormat(\"yyyy-MM-dd'T'HH:mm:ss\"),\n    before: end.toUTC().toFormat(\"yyyy-MM-dd'T'HH:mm:ss\"),\n    utc_from: start.toUTC().toFormat(\"yyyy-MM-dd'T'HH:mm:ss\"),\n    utc_to: end.toUTC().toFormat(\"yyyy-MM-dd'T'HH:mm:ss\"),\n  };\n}\n\nconst current = bounds(first, last);\nconst prevLast = first.minus({ days: 1 });\nconst prevFirst = prevLast.minus({ days: spanDays - 1 });\nconst previous = bounds(prevFirst, prevLast);\n\nreturn [{\n  json: {\n    valid: true,\n    compare: input.compare !== false,\n    ordersUrl: `${storeUrl}/wp-json/wc/v3/orders`,\n    statuses: ALL_STATUSES,\n    // Built here, not in the HTTP node: Buffer is available in Code nodes but\n    // not in HTTP node expressions, where it silently yields a broken header.\n    // The raw key and secret deliberately do not leave this node.\n    authHeader: 'Basic ' + Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64'),\n    period: {\n      name: period,\n      label,\n      date_from: first.toFormat('yyyy-MM-dd'),\n      date_to: last.toFormat('yyyy-MM-dd'),\n      timezone,\n      utc_from: current.utc_from,\n      utc_to: current.utc_to,\n    },\n    current,\n    previous: {\n      date_from: prevFirst.toFormat('yyyy-MM-dd'),\n      date_to: prevLast.toFormat('yyyy-MM-dd'),\n      ...previous,\n    },\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        -192
+      ],
+      "id": "14bbf670-d72b-4c73-b083-5bde16cfa390",
+      "name": "prepare-request"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "055c8356-e512-4a5e-9d06-d0fee78ef309",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        -192
+      ],
+      "id": "9b05509f-ddda-4a50-b4db-7690bb8f3176",
+      "name": "route-valid"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.ordersUrl }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "={{ $json.statuses }}"
+            },
+            {
+              "name": "dates_are_gmt",
+              "value": "true"
+            },
+            {
+              "name": "after",
+              "value": "={{ $json.current.after }}"
+            },
+            {
+              "name": "before",
+              "value": "={{ $json.current.before }}"
+            },
+            {
+              "name": "per_page",
+              "value": "100"
+            },
+            {
+              "name": "orderby",
+              "value": "date"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.authHeader }}"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {}
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.body.length === 0 }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        672,
+        -288
+      ],
+      "id": "d4f17cfb-5bee-4a8e-932a-36c816946546",
+      "name": "fetch-current",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $('prepare-request').first().json.ordersUrl }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "={{ $('prepare-request').first().json.statuses }}"
+            },
+            {
+              "name": "dates_are_gmt",
+              "value": "true"
+            },
+            {
+              "name": "after",
+              "value": "={{ $('prepare-request').first().json.previous.after }}"
+            },
+            {
+              "name": "before",
+              "value": "={{ $('prepare-request').first().json.previous.before }}"
+            },
+            {
+              "name": "per_page",
+              "value": "100"
+            },
+            {
+              "name": "orderby",
+              "value": "date"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('prepare-request').first().json.authHeader }}"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {}
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.body.length === 0 }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        896,
+        -288
+      ],
+      "id": "de6e0be8-11c6-4f65-a302-edbc703c486c",
+      "name": "fetch-previous",
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reduces two order windows into the tool contract.\n//\n// Mirrors scripts/orders_summary.py so the two can be compared to the cent.\n// Any divergence between them is a bug in one of the two, never a rounding\n// difference: both round to two decimals at the same points.\n\nconst REVENUE_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];\n\nconst config = $('prepare-request').first().json;\n// Always Output Data is enabled on both HTTP nodes so that an empty window\n// does not halt the workflow before the contract is built. The cost is a\n// single placeholder item with no order fields, filtered out here.\nfunction orders(nodeName) {\n  return $(nodeName)\n    .all()\n    .map((item) => item.json)\n    .filter((order) => order && order.id !== undefined);\n}\n\nconst currentOrders = orders('fetch-current');\nconst previousOrders = orders('fetch-previous');\n\nfunction money(value) {\n  return Math.round((value + Number.EPSILON) * 100) / 100;\n}\n\nfunction compute(orders) {\n  const byStatus = {};\n  let gross = 0;\n  let refunds = 0;\n  let revenueOrders = 0;\n  let currency = '';\n\n  for (const order of orders) {\n    const status = String(order.status);\n    const total = parseFloat(order.total) || 0;\n    currency = currency || String(order.currency || '');\n\n    if (!byStatus[status]) {\n      byStatus[status] = { count: 0, total: 0 };\n    }\n    byStatus[status].count += 1;\n    byStatus[status].total += total;\n\n    // Refunds are only subtracted for orders that contributed to gross.\n    // Orders with status=refunded are already excluded from revenue, so\n    // subtracting their refunds too would deduct the same money twice.\n    if (REVENUE_STATUSES.includes(status)) {\n      gross += total;\n      revenueOrders += 1;\n      for (const refund of order.refunds || []) {\n        refunds += Math.abs(parseFloat(refund.total) || 0);\n      }\n    }\n  }\n\n  for (const bucket of Object.values(byStatus)) {\n    bucket.total = money(bucket.total);\n  }\n\n  const sorted = {};\n  for (const key of Object.keys(byStatus).sort()) {\n    sorted[key] = byStatus[key];\n  }\n\n  return {\n    orders_count: orders.length,\n    revenue_orders_count: revenueOrders,\n    revenue_gross: money(gross),\n    refunds_total: money(refunds),\n    revenue_net: money(gross - refunds),\n    aov: revenueOrders ? money(gross / revenueOrders) : null,\n    currency: currency || null,\n    by_status: sorted,\n  };\n}\n\nfunction delta(current, previous) {\n  if (current === null || previous === null) {\n    return { absolute: null, percent: null };\n  }\n  const diff = money(current - previous);\n  if (previous === 0) {\n    return { absolute: diff, percent: null };\n  }\n  return { absolute: diff, percent: Math.round((diff / previous) * 1000) / 10 };\n}\n\nconst metrics = compute(currentOrders);\n\nlet comparison = null;\nif (config.compare) {\n  const previousMetrics = compute(previousOrders);\n  comparison = {\n    date_from: config.previous.date_from,\n    date_to: config.previous.date_to,\n    metrics: previousMetrics,\n    deltas: {\n      orders_count: delta(metrics.orders_count, previousMetrics.orders_count),\n      revenue_gross: delta(metrics.revenue_gross, previousMetrics.revenue_gross),\n      revenue_net: delta(metrics.revenue_net, previousMetrics.revenue_net),\n      aov: delta(metrics.aov, previousMetrics.aov),\n    },\n  };\n}\n\nreturn [{\n  json: {\n    status: currentOrders.length ? 'ok' : 'no_data',\n    period: config.period,\n    metrics,\n    comparison,\n    notes: [\n      'Refunds are attributed to the parent order date, not the refund date.',\n      'Revenue excludes cancelled, failed and refunded orders.',\n    ],\n    error: null,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        -288
+      ],
+      "id": "d6b450f2-ce8a-4df3-9814-981cd05194bf",
+      "name": "compute-metrics"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalises a rejected request into the same contract shape as a success.\n//\n// The agent should never have to branch on response shape: same keys every\n// time, with `status` and `error` carrying the difference. prepare-request\n// has already classified the failure, so this node only reformats it.\n\nconst input = $input.first().json;\n\nreturn [{\n  json: {\n    status: input.status || 'invalid_input',\n    period: null,\n    metrics: null,\n    comparison: null,\n    notes: [],\n    error: input.error || {\n      code: 'unknown',\n      message: 'Request rejected without a reason code',\n    },\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        -96
+      ],
+      "id": "a17f432a-e209-44e9-b43a-054d6b24fce3",
+      "name": "invalid-input-response"
+    }
+  ],
+  "connections": {
+    "tool-input": {
+      "main": [
+        [
+          {
+            "node": "prepare-request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepare-request": {
+      "main": [
+        [
+          {
+            "node": "route-valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route-valid": {
+      "main": [
+        [
+          {
+            "node": "fetch-current",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "invalid-input-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fetch-current": {
+      "main": [
+        [
+          {
+            "node": "fetch-previous",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fetch-previous": {
+      "main": [
+        [
+          {
+            "node": "compute-metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "tags": []
+}
