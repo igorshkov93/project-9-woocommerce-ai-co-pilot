@@ -2,7 +2,6 @@
   "name": "10-tool-resolve-entity",
   "description": null,
   "active": false,
-  "isArchived": false,
   "nodes": [
     {
       "parameters": {
@@ -212,31 +211,5 @@
   "staticData": null,
   "nodeGroups": [],
   "pinData": {},
-  "activeVersionId": "42215c23-cc1d-4b59-bce1-809fc8cd7ed6",
-  "versionCounter": 61,
-  "triggerCount": 0,
-  "tags": [],
-  "shared": [
-    {
-      "updatedAt": "2026-08-25T11:53:29.186Z",
-      "createdAt": "2026-08-25T11:53:29.186Z",
-      "role": "workflow:owner",
-      "workflowId": "mybfI2XKzpsy7MWh",
-      "projectId": "8Oqxz0o8Y6IBx0yZ",
-      "project": {
-        "updatedAt": "2026-08-19T14:06:29.144Z",
-        "createdAt": "2026-08-19T13:10:12.649Z",
-        "id": "8Oqxz0o8Y6IBx0yZ",
-        "name": "Igor Igor <random@test.com>",
-        "type": "personal",
-        "icon": null,
-        "description": null,
-        "creatorId": "aa9beea7-9e56-4f01-904a-a90d5461d2b6"
-      }
-    }
-  ],
-  "versionMetadata": {
-    "name": "Version 42215c23",
-    "description": ""
-  }
+  "tags": []
 }
