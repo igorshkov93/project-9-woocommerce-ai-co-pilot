@@ -15,7 +15,7 @@ same value here. Whichever strategy sticks is the one the generator will use.
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from woo_client import WooClient, WooError
 
@@ -48,7 +48,7 @@ def main() -> int:
         product_id = int(products[0]["id"])
         print(f"probe product: {product_id} {products[0]['name']}")
 
-        target_dt = datetime.now(timezone.utc) - timedelta(days=30)
+        target_dt = datetime.now(UTC) - timedelta(days=30)
         target = target_dt.strftime("%Y-%m-%dT%H:%M:%S")
         print(f"target date:   {target}")
         print()
@@ -61,21 +61,37 @@ def main() -> int:
         payload["date_created"] = target
         order = client.post("orders", payload)
         created_ids.append(int(order["id"]))
-        results.append(("A create date_created", str(order["id"]), str(order.get("date_created_gmt"))))
+        results.append(
+            (
+                "A create date_created",
+                str(order["id"]),
+                str(order.get("date_created_gmt")),
+            )
+        )
 
         # Strategy B: single create with date_created_gmt.
         payload = base_payload(product_id)
         payload["date_created_gmt"] = target
         order = client.post("orders", payload)
         created_ids.append(int(order["id"]))
-        results.append(("B create date_created_gmt", str(order["id"]), str(order.get("date_created_gmt"))))
+        results.append(
+            (
+                "B create date_created_gmt",
+                str(order["id"]),
+                str(order.get("date_created_gmt")),
+            )
+        )
 
         # Strategy C: create first, then move the date with an update.
         order = client.post("orders", base_payload(product_id))
         order_id = int(order["id"])
         created_ids.append(order_id)
-        updated = client.request("PUT", f"orders/{order_id}", payload={"date_created": target})[0]
-        results.append(("C create then PUT", str(order_id), str(updated.get("date_created_gmt"))))
+        updated = client.request(
+            "PUT", f"orders/{order_id}", payload={"date_created": target}
+        )[0]
+        results.append(
+            ("C create then PUT", str(order_id), str(updated.get("date_created_gmt")))
+        )
 
         print(f"{'strategy':<28} {'order':<8} resulting date_created_gmt")
         for label, order_id_str, resulting in results:

@@ -18,7 +18,7 @@ import argparse
 import random
 import sys
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from woo_client import WooClient, WooError
 
@@ -63,7 +63,7 @@ def eligible(order: dict, now_utc: datetime) -> bool:
     created = order.get("date_created_gmt")
     if not created:
         return False
-    created_dt = datetime.fromisoformat(created).replace(tzinfo=timezone.utc)
+    created_dt = datetime.fromisoformat(created).replace(tzinfo=UTC)
     if now_utc - created_dt < timedelta(days=MIN_AGE_DAYS):
         return False
 
@@ -81,7 +81,9 @@ def pick_line_item(rng: random.Random, order: dict) -> dict | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate partial refunds.")
-    parser.add_argument("--apply", action="store_true", help="Write refunds to the store.")
+    parser.add_argument(
+        "--apply", action="store_true", help="Write refunds to the store."
+    )
     args = parser.parse_args()
 
     print(f"mode: {'APPLY' if args.apply else 'DRY-RUN'}")
@@ -90,7 +92,7 @@ def main() -> int:
     try:
         client = WooClient()
         rng = random.Random(SEED)
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(UTC)
 
         orders = client.get_all("orders", {"status": "any"})
         candidates = [o for o in orders if eligible(o, now_utc)]

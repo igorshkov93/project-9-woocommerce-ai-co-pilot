@@ -12,7 +12,7 @@ behaviour rather than an obvious error.
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from copilot_client import CopilotClient, CopilotClientError
@@ -82,7 +82,9 @@ def main() -> int:
 
     if status == 200:
         # Worth spelling out: this is a data leak, not a failing test.
-        check(False, "anonymous request must not return data", "customer emails exposed")
+        check(
+            False, "anonymous request must not return data", "customer emails exposed"
+        )
 
     try:
         status, body = client.get_abandoned_carts(
@@ -225,7 +227,7 @@ def main() -> int:
         f"strict={len(strict_carts)} permissive={len(carts)}",
     )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     threshold_minutes = 240
 
     status, windowed = client.get_abandoned_carts(

@@ -139,7 +139,9 @@ def ensure_products(client: WooClient, category_id: int | None, apply: bool) -> 
             }
         )
         created = client.post("products", payload)
-        print(f"product:  CREATED id={created['id']:<5} sku={spec['sku']:<18} {created['name']}")
+        print(
+            f"product:  CREATED id={created['id']:<5} sku={spec['sku']:<18} {created['name']}"
+        )
 
 
 def main() -> int:

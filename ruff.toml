@@ -1,0 +1,54 @@
+# Ruff configuration for MEGA Project #9.
+#
+# A dedicated file rather than a [tool.ruff] block in pyproject.toml: the
+# project has no pyproject.toml, and Project #8 showed that two overlapping
+# dependency/config sources create ambiguity that is hard to unwind later.
+
+target-version = "py312"
+line-length = 88
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific rules
+    "TRY",  # tryceratops
+]
+
+ignore = [
+    # Messages passed straight into raise are deliberate here: the text of a
+    # ToolError becomes part of the tool contract returned to the agent.
+    # Splitting each into its own exception class would obscure that.
+    "TRY003",
+
+    # --- Deferred to Step 16 (hardening). Tracked debt, not oversight. ---
+
+    # fetch_catalog.py raises RuntimeError where TypeError would be more
+    # precise. Committed in Step 10; fixing it here would mix two steps
+    # into one commit.
+    "TRY004",
+    # 13 long lines remain in Step 1-10 scripts. All are unbreakable string
+    # literals that the formatter cannot split without changing output.
+    # Cosmetic only.
+    "E501",
+    # woo_client.py concatenates a tuple where unpacking reads better.
+    # Cosmetic only.
+    "RUF005",
+]
+
+[lint.isort]
+# Scripts import their siblings directly (verify_orders_summary imports
+# orders_summary), so ruff must be told these are local modules. Without
+# this, every verify script trips I001 on an otherwise correct import block.
+known-first-party = [
+    "orders_summary",
+    "woo_client",
+    "copilot_client",
+]
+
+[format]
+docstring-code-format = true

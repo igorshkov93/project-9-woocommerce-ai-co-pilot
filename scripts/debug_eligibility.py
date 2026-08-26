@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import sys
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from woo_client import WooClient, WooError
 
@@ -19,7 +19,7 @@ MIN_AGE_DAYS = 2
 def main() -> int:
     try:
         client = WooClient()
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(UTC)
         orders = client.get_all("orders", {"status": "any"})
         print(f"orders fetched: {len(orders)}")
         print()
@@ -49,7 +49,7 @@ def main() -> int:
             if not created:
                 reasons["no date_created_gmt"] += 1
                 continue
-            created_dt = datetime.fromisoformat(created).replace(tzinfo=timezone.utc)
+            created_dt = datetime.fromisoformat(created).replace(tzinfo=UTC)
             if now_utc - created_dt < timedelta(days=MIN_AGE_DAYS):
                 reasons["too recent"] += 1
                 continue

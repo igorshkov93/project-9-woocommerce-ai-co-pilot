@@ -17,7 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from woo_client import PROJECT_ROOT, WooClient, WooError
@@ -32,7 +32,7 @@ BACKUP_DIR = PROJECT_ROOT / "backups"
 def write_backup(orders: list[dict]) -> Path:
     """Persist the full payload of the orders about to be deleted."""
     BACKUP_DIR.mkdir(exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     path = BACKUP_DIR / f"legacy_orders_{stamp}.json"
     path.write_text(json.dumps(orders, indent=2, ensure_ascii=False), encoding="utf-8")
     return path

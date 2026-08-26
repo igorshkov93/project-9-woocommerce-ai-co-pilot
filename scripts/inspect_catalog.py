@@ -35,8 +35,8 @@ def main() -> int:
             print(
                 f"id={product['id']:<5} "
                 f"type={product['type']:<10} "
-                f"price={str(product.get('price') or '-'):<9} "
-                f"stock={str(product.get('stock_status')):<12} "
+                f"price={product.get('price') or '-'!s:<9} "
+                f"stock={product.get('stock_status')!s:<12} "
                 f"cats=[{names}] "
                 f"name={product['name']}"
             )
@@ -50,12 +50,14 @@ def main() -> int:
                     )
                     print(
                         f"    variation_id={variation['id']:<5} "
-                        f"price={str(variation.get('price') or '-'):<9} "
+                        f"price={variation.get('price') or '-'!s:<9} "
                         f"[{attributes}]"
                     )
 
         print()
-        print(f"totals: {len(products)} published products, {len(categories)} categories")
+        print(
+            f"totals: {len(products)} published products, {len(categories)} categories"
+        )
 
     except WooError as error:
         print(f"FAIL: {error}")

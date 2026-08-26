@@ -29,7 +29,7 @@ import argparse
 import random
 import sys
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from woo_client import WooClient, WooError
@@ -208,7 +208,7 @@ def build_orders(
             # behaviour of the summary tool is always exercised.
             force_night = days_ago == 0 and index == 0
             local_dt = pick_local_time(rng, day, force_night)
-            utc_dt = local_dt.astimezone(timezone.utc)
+            utc_dt = local_dt.astimezone(UTC)
 
             chosen: list[PoolItem] = []
             for _ in range(rng.choices([1, 2, 3], weights=[55, 30, 15], k=1)[0]):
@@ -278,7 +278,7 @@ def report(orders: list[tuple[datetime, dict[str, object]]], tz: ZoneInfo) -> No
     today_local = datetime.now(tz).date()
     today_local_count = sum(1 for dt, _ in orders if dt.date() == today_local)
     today_utc_count = sum(
-        1 for dt, _ in orders if dt.astimezone(timezone.utc).date() == today_local
+        1 for dt, _ in orders if dt.astimezone(UTC).date() == today_local
     )
     night = sum(1 for dt, _ in orders if dt.hour < 3)
 
@@ -286,12 +286,16 @@ def report(orders: list[tuple[datetime, dict[str, object]]], tz: ZoneInfo) -> No
     print(f"total orders:          {len(orders)}")
     print(f"night orders (00-03):  {night}")
     print(f"orders today (local):  {today_local_count}")
-    print(f"orders today (naive UTC): {today_utc_count}  <- wrong answer if timezone is ignored")
+    print(
+        f"orders today (naive UTC): {today_utc_count}  <- wrong answer if timezone is ignored"
+    )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate demo orders.")
-    parser.add_argument("--apply", action="store_true", help="Write orders to the store.")
+    parser.add_argument(
+        "--apply", action="store_true", help="Write orders to the store."
+    )
     parser.add_argument(
         "--reset",
         action="store_true",
@@ -338,7 +342,9 @@ def main() -> int:
                 seeded = []
 
         if seeded and not args.force:
-            print("Seeded orders already exist. Refusing to run again. Use --reset or --force.")
+            print(
+                "Seeded orders already exist. Refusing to run again. Use --reset or --force."
+            )
             return 0
 
         if not args.apply:

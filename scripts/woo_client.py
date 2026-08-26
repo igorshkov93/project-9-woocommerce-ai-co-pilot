@@ -81,8 +81,12 @@ class WooClient:
         self.env = env if env is not None else load_env()
         self.base_url = self.env["WOO_STORE_URL"].rstrip("/") + "/wp-json/wc/v3"
 
-        credentials = f"{self.env['WOO_CONSUMER_KEY']}:{self.env['WOO_CONSUMER_SECRET']}"
-        self.auth_header = "Basic " + base64.b64encode(credentials.encode("utf-8")).decode("ascii")
+        credentials = (
+            f"{self.env['WOO_CONSUMER_KEY']}:{self.env['WOO_CONSUMER_SECRET']}"
+        )
+        self.auth_header = "Basic " + base64.b64encode(
+            credentials.encode("utf-8")
+        ).decode("ascii")
 
         verify = self.env.get("WOO_VERIFY_SSL", "true").lower() != "false"
         self.verify_ssl = verify
@@ -134,11 +138,15 @@ class WooClient:
                 detail = error.read().decode("utf-8", errors="replace")[:300]
                 # 4xx means the request itself is wrong: retrying cannot help.
                 if error.code < 500:
-                    raise WooError(f"{method} {url} -> HTTP {error.code}: {detail}") from error
+                    raise WooError(
+                        f"{method} {url} -> HTTP {error.code}: {detail}"
+                    ) from error
                 last_error = WooError(f"{method} {url} -> HTTP {error.code}: {detail}")
 
             except urllib.error.URLError as error:
-                last_error = WooError(f"{method} {url} -> network error: {error.reason}")
+                last_error = WooError(
+                    f"{method} {url} -> network error: {error.reason}"
+                )
 
             except TimeoutError as error:
                 # Note: TimeoutError does not inherit from URLError, so it must
@@ -153,7 +161,7 @@ class WooClient:
                     ) from error
 
             if attempt < retries:
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
 
         raise WooError(f"Failed after {retries} attempt(s): {last_error}")
 

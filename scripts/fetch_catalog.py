@@ -21,7 +21,7 @@ import os
 import re
 import sys
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -171,7 +171,7 @@ def build_snapshot(base_url: str, auth: HTTPBasicAuth) -> dict[str, Any]:
     categories = [item for item in all_categories if item["product_count"] > 0]
 
     return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "source": base_url,
         "stats": {
             "products": len(products),

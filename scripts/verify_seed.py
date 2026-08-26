@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from woo_client import WooClient, WooError
@@ -33,7 +33,7 @@ NON_REVENUE_STATUSES = ("cancelled", "failed", "refunded")
 
 def to_local(stamp: str, tz: ZoneInfo) -> datetime:
     """Convert a GMT timestamp string from the API into business-local time."""
-    return datetime.fromisoformat(stamp).replace(tzinfo=timezone.utc).astimezone(tz)
+    return datetime.fromisoformat(stamp).replace(tzinfo=UTC).astimezone(tz)
 
 
 def main() -> int:
@@ -141,11 +141,24 @@ def main() -> int:
             print(f"  {count:>3}  {name}")
 
         electronics_returns = sum(
-            count for name, count in returned.items()
-            if any(token in name for token in ("Earbuds", "Watch", "Speaker", "Power Bank", "USB-C", "Mouse"))
+            count
+            for name, count in returned.items()
+            if any(
+                token in name
+                for token in (
+                    "Earbuds",
+                    "Watch",
+                    "Speaker",
+                    "Power Bank",
+                    "USB-C",
+                    "Mouse",
+                )
+            )
         )
         print()
-        print(f"electronics share of returns: {electronics_returns}/{sum(returned.values())}")
+        print(
+            f"electronics share of returns: {electronics_returns}/{sum(returned.values())}"
+        )
 
         print()
         print("=== VERDICT ===")
