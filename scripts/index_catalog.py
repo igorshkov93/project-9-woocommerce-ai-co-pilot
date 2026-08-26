@@ -334,7 +334,7 @@ def main() -> int:
         vectors = embed_texts(
             genai_client, model, dimension, [str(r["text"]) for r in records]
         )
-    except Exception as error:  # noqa: BLE001 - surface any provider failure
+    except Exception as error:
         print(
             f"ERROR: embedding failed: {type(error).__name__}: {error}",
             file=sys.stderr,
@@ -351,11 +351,11 @@ def main() -> int:
                 vector=vector,
                 payload=dict(record["payload"]),
             )
-            for record, vector in zip(records, vectors)
+            for record, vector in zip(records, vectors, strict=True)
         ]
         qdrant.upsert(collection_name=collection, points=points, wait=True)
         count = qdrant.count(collection_name=collection, exact=True).count
-    except Exception as error:  # noqa: BLE001 - surface any storage failure
+    except Exception as error:
         print(
             f"ERROR: Qdrant write failed: {type(error).__name__}: {error}",
             file=sys.stderr,

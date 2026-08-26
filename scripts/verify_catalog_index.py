@@ -179,7 +179,9 @@ def check_records(
 
     missing = [
         f"{entity_type}:{entity_id} ({name})"
-        for (entity_type, entity_id, name), point_id in zip(expected, point_ids)
+        for (entity_type, entity_id, name), point_id in zip(
+            expected, point_ids, strict=True
+        )
         if point_id not in by_id
     ]
     failures.check(
@@ -190,7 +192,9 @@ def check_records(
 
     incomplete: list[str] = []
     mismatched: list[str] = []
-    for (entity_type, entity_id, name), point_id in zip(expected, point_ids):
+    for (entity_type, entity_id, name), point_id in zip(
+        expected, point_ids, strict=True
+    ):
         point = by_id.get(point_id)
         if point is None:
             continue
@@ -386,7 +390,7 @@ def main() -> int:
             qdrant, collection, genai_client, model, dimension, snapshot, failures
         )
         report_noise_scores(qdrant, collection, genai_client, model, dimension)
-    except Exception as error:  # noqa: BLE001 - any failure means the index is unusable
+    except Exception as error:
         print(f"\nERROR: {type(error).__name__}: {error}", file=sys.stderr)
         return 1
 
