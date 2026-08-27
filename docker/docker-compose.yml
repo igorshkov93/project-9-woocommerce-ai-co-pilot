@@ -31,7 +31,11 @@ services:
       - WOO_STORE_URL=${WOO_STORE_URL}
       - WOO_CONSUMER_KEY=${WOO_CONSUMER_KEY}
       - WOO_CONSUMER_SECRET=${WOO_CONSUMER_SECRET}
-      - BUSINESS_TIMEZONE=${BUSINESS_TIMEZONE}      
+      - BUSINESS_TIMEZONE=${BUSINESS_TIMEZONE}   
+      - COPILOT_API_BASE=${COPILOT_API_BASE}
+      - WP_APP_USER=${WP_APP_USER}
+      - WP_APP_PASSWORD=${WP_APP_PASSWORD}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}         
     volumes:
       - ./n8n_data:/home/node/.n8n
     extra_hosts:
