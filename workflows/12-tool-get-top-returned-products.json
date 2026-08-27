@@ -1,0 +1,302 @@
+{
+  "name": "12-tool-get-top-returned-products",
+  "description": null,
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"from\": \"2026-07-15\",\n  \"to\": \"2026-08-21\",\n  \"days\": 30,\n  \"limit\": 5\n}"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "b231654b-8568-4b2f-93f3-91061d7eac2b",
+      "name": "tool-input"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validates tool input, resolves the window and builds the auth header.\n// $env is unavailable in HTTP node expression previews but works here, so\n// credentials are read once and passed downstream as plain fields.\n// Buffer is likewise available in Code nodes only.\n\nconst DEFAULT_DAYS = 30;\nconst DEFAULT_LIMIT = 5;\nconst MAX_LIMIT = 50;\nconst MAX_DAYS = 366;\nconst DATE_RE = /^\\d{4}-\\d{2}-\\d{2}$/;\n\nconst input = $input.first().json ?? {};\n\nconst storeUrl = String($env.WOO_STORE_URL || '').replace(/\\/+$/, '');\nconst consumerKey = String($env.WOO_CONSUMER_KEY || '');\nconst consumerSecret = String($env.WOO_CONSUMER_SECRET || '');\nconst timezone = String($env.BUSINESS_TIMEZONE || 'Europe/Kyiv');\n\nfunction fail(status, error) {\n  return [{ json: { valid: false, status, error } }];\n}\n\nif (!storeUrl || !consumerKey || !consumerSecret) {\n  return fail('upstream_error', 'WooCommerce credentials are not configured');\n}\n\nfunction optionalInt(value, fallback) {\n  if (value === undefined || value === null || value === '') return fallback;\n  return Number(value);\n}\n\nconst limit = optionalInt(input.limit, DEFAULT_LIMIT);\nif (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {\n  return fail('invalid_input', `limit must be an integer between 1 and ${MAX_LIMIT}`);\n}\n\nconst days = optionalInt(input.days, DEFAULT_DAYS);\nif (!Number.isInteger(days) || days < 1 || days > MAX_DAYS) {\n  return fail('invalid_input', `days must be an integer between 1 and ${MAX_DAYS}`);\n}\n\nlet end;\nif (input.to) {\n  if (!DATE_RE.test(String(input.to))) {\n    return fail('invalid_input', 'to must be formatted as YYYY-MM-DD');\n  }\n  end = DateTime.fromISO(String(input.to), { zone: timezone });\n} else {\n  end = DateTime.now().setZone(timezone).startOf('day');\n}\nif (!end.isValid) return fail('invalid_input', 'to is not a valid date');\n\nlet start;\nif (input.from) {\n  if (!DATE_RE.test(String(input.from))) {\n    return fail('invalid_input', 'from must be formatted as YYYY-MM-DD');\n  }\n  start = DateTime.fromISO(String(input.from), { zone: timezone });\n} else {\n  start = end.minus({ days: days - 1 });\n}\nif (!start.isValid) return fail('invalid_input', 'from is not a valid date');\nif (start > end) return fail('invalid_input', 'from date is later than to date');\n\n// after and before are strictly exclusive in the WooCommerce REST API, so\n// the lower bound is nudged back one second to keep an order created\n// exactly at local midnight inside the window.\nconst fmt = \"yyyy-MM-dd'T'HH:mm:ss\";\nconst after = start.startOf('day').minus({ seconds: 1 }).toUTC().toFormat(fmt);\nconst before = end.startOf('day').plus({ days: 1 }).toUTC().toFormat(fmt);\n\nconst authHeader =\n  'Basic ' + Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');\n\nreturn [\n  {\n    json: {\n      valid: true,\n      ordersUrl: `${storeUrl}/wp-json/wc/v3/orders`,\n      authHeader,\n      after,\n      before,\n      timezone,\n      limit,\n      from: start.toFormat('yyyy-MM-dd'),\n      to: end.toFormat('yyyy-MM-dd'),\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "11ec2394-b041-4722-b823-3fe45083c52a",
+      "name": "prepare-request"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cb7e883c-e6af-45f9-910c-b5613859cca6",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        416,
+        0
+      ],
+      "id": "401cc3c2-773d-4807-ba29-d9e7453192ae",
+      "name": "route-valid"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mirrors the error contract of get_orders_summary so the agent sees one\n// shape across tools.\nconst source = $input.first().json ?? {};\nreturn [\n  {\n    json: {\n      status: source.status || 'invalid_input',\n      error: source.error || 'invalid input',\n      top: [],\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        96
+      ],
+      "id": "21728b58-30c6-41b6-b9c1-ad4c813f4bf0",
+      "name": "invalid-input-response"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.ordersUrl }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "=any"
+            },
+            {
+              "name": "after",
+              "value": "={{ $json.after }}"
+            },
+            {
+              "name": "before",
+              "value": "={{ $json.before }}"
+            },
+            {
+              "name": "dates_are_gmt",
+              "value": "true"
+            },
+            {
+              "name": "orderby",
+              "value": "date"
+            },
+            {
+              "name": "order",
+              "value": "asc"
+            },
+            {
+              "name": "per_page",
+              "value": "100"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.authHeader }}"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.body.length === 0 }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        624,
+        -96
+      ],
+      "id": "02130e68-6638-4130-8fbc-fe24690f9352",
+      "name": "fetch-orders",
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turns the order list into one item per refunded order, which is what\n// makes the next HTTP node fire once per order. The loop is expressed as\n// data shape rather than written out.\n//\n// Always Output Data on the previous node injects a single empty item when\n// a page comes back empty, so items without an id are filtered out here.\n//\n// SOLD_STATUSES intentionally includes \"refunded\": for an inventory\n// question the unit was still sold before it came back. This differs from\n// the revenue statuses used by get_orders_summary.\n\nconst SOLD_STATUSES = ['pending', 'processing', 'on-hold', 'completed', 'refunded'];\n\nconst config = $('prepare-request').first().json;\nconst orders = $input.all().map((item) => item.json).filter((order) => order && order.id);\n\nlet excludedByStatus = 0;\nconst selected = [];\n\nfor (const order of orders) {\n  const refunds = order.refunds || [];\n  if (refunds.length === 0) continue;\n  if (!SOLD_STATUSES.includes(order.status)) {\n    excludedByStatus += 1;\n    continue;\n  }\n  selected.push({\n    json: {\n      orderId: order.id,\n      orderStatus: order.status,\n      refundsUrl: `${config.ordersUrl}/${order.id}/refunds`,\n      authHeader: config.authHeader,\n      ordersScanned: orders.length,\n      excludedByStatus,\n    },\n  });\n}\n\nif (selected.length === 0) {\n  return [{ json: { noRefunds: true, ordersScanned: orders.length, excludedByStatus } }];\n}\n\n// The counter is only final after the whole scan, so stamp it on every item.\nfor (const item of selected) {\n  item.json.excludedByStatus = excludedByStatus;\n  item.json.refundedOrders = selected.length;\n}\n\nreturn selected;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        -96
+      ],
+      "id": "67a08f8f-c2a5-49a6-b529-f5dfe6228b29",
+      "name": "select-refunded-orders"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.refundsUrl }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "per_page",
+              "value": "100"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.authHeader }}"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1040,
+        -96
+      ],
+      "id": "70f1c36e-eefd-4adf-b316-aefa8996f778",
+      "name": "fetch-refund-details",
+      "alwaysOutputData": true,
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregates refund line items per product and emits the tool contract.\n//\n// Money is accumulated as integer cents. The Python reference does the same,\n// which is what makes a to-the-cent comparison meaningful rather than lucky:\n// float accumulation drifts differently in the two runtimes.\n//\n// The detail endpoint names a refund's total \"amount\"; the array embedded in\n// GET /orders names the same value \"total\". Reading the wrong one silently\n// yields zero.\n\nconst MIN_SALES_FOR_RATE = 3;\nconst UNSPECIFIED_REASON = 'unspecified';\nconst SOLD_STATUSES = ['pending', 'processing', 'on-hold', 'completed', 'refunded'];\n\nconst config = $('prepare-request').first().json;\nconst selection = $('select-refunded-orders').first().json;\n\nconst window = {\n  from: config.from,\n  to: config.to,\n  timezone: config.timezone,\n  attribution: 'order_date',\n  orders_scanned: selection.ordersScanned || 0,\n};\n\nif (selection.noRefunds) {\n  return [{ json: { status: 'no_data', window, limit: config.limit } }];\n}\n\nfunction toCents(value) {\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? Math.abs(Math.round(parsed * 100)) : 0;\n}\n\nfunction toUnits(value) {\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? Math.abs(Math.trunc(parsed)) : 0;\n}\n\nfunction normaliseReason(value) {\n  if (typeof value !== 'string' || value.trim() === '') return UNSPECIFIED_REASON;\n  return value.trim();\n}\n\nfunction refundType(refund) {\n  for (const meta of refund.meta_data || []) {\n    if (meta && meta.key === '_refund_type') return String(meta.value || 'unknown');\n  }\n  return 'unknown';\n}\n\n// Units sold per product, the return-rate denominator, from orders already\n// in memory. No second round trip to the API.\nconst soldByProduct = new Map();\nfor (const item of $('fetch-orders').all()) {\n  const order = item.json;\n  if (!order || !order.id || !SOLD_STATUSES.includes(order.status)) continue;\n  for (const line of order.line_items || []) {\n    const productId = Number(line.product_id) || 0;\n    if (!productId) continue;\n    soldByProduct.set(productId, (soldByProduct.get(productId) || 0) + toUnits(line.quantity));\n  }\n}\n\nconst products = new Map();\nconst globalReasons = new Map();\n\nlet refundsCount = 0;\nlet ordersAffected = 0;\nlet refundCents = 0;\nlet unitsReturned = 0;\nlet fullRefunds = 0;\nlet partialRefunds = 0;\nlet nonProductLines = 0;\nlet amountMismatches = 0;\nlet detailCalls = 0;\n\nconst items = $input.all();\n\nfor (let index = 0; index < items.length; index += 1) {\n  const payload = items[index].json;\n  // The paired input item carries the order id: the HTTP node preserves\n  // input order one-to-one.\n  const source = $('select-refunded-orders').all()[index];\n  if (!source) continue;\n  const orderId = source.json.orderId;\n  if (!orderId) continue;\n  detailCalls += 1;\n\n  // A single refund object arrives as an object; several arrive as an array.\n  let refunds = [];\n  if (Array.isArray(payload)) refunds = payload;\n  else if (Array.isArray(payload.data)) refunds = payload.data;\n  else if (payload && payload.id) refunds = [payload];\n  if (refunds.length === 0) continue;\n  ordersAffected += 1;\n\n  for (const refund of refunds) {\n    refundsCount += 1;\n    const reason = normaliseReason(refund.reason);\n    globalReasons.set(reason, (globalReasons.get(reason) || 0) + 1);\n\n    const kind = refundType(refund);\n    if (kind === 'full') fullRefunds += 1;\n    else if (kind === 'partial') partialRefunds += 1;\n\n    const declared = toCents(refund.amount);\n    let lineSum = 0;\n\n    for (const line of refund.line_items || []) {\n      const cents = toCents(line.total);\n      const units = toUnits(line.quantity);\n      lineSum += cents;\n\n      const productId = Number(line.product_id) || 0;\n      if (!productId) {\n        nonProductLines += 1;\n        continue;\n      }\n\n      let entry = products.get(productId);\n      if (!entry) {\n        entry = {\n          product_id: productId,\n          sku: String(line.sku || ''),\n          name: String(line.name || ''),\n          units_returned: 0,\n          refund_cents: 0,\n          order_ids: new Set(),\n          reasons: new Map(),\n        };\n        products.set(productId, entry);\n      }\n      entry.units_returned += units;\n      entry.refund_cents += cents;\n      entry.order_ids.add(orderId);\n      entry.reasons.set(reason, (entry.reasons.get(reason) || 0) + 1);\n      unitsReturned += units;\n    }\n\n    refundCents += lineSum;\n    if (declared && Math.abs(declared - lineSum) > 1) amountMismatches += 1;\n  }\n}\n\nif (products.size === 0) {\n  return [{ json: { status: 'no_data', window, limit: config.limit } }];\n}\n\nfunction sortedCounter(counter) {\n  return Object.fromEntries([...counter.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])));\n}\n\nconst rows = [...products.values()].map((entry) => {\n  const unitsSold = soldByProduct.get(entry.product_id) || 0;\n  const rate = unitsSold ? Math.round((entry.units_returned / unitsSold) * 10000) / 100 : 0;\n  const reasons = sortedCounter(entry.reasons);\n  const topReason = Object.keys(reasons)[0] || UNSPECIFIED_REASON;\n  return {\n    product_id: entry.product_id,\n    sku: entry.sku,\n    name: entry.name,\n    units_returned: entry.units_returned,\n    refund_amount: Math.round(entry.refund_cents) / 100,\n    orders_affected: entry.order_ids.size,\n    units_sold: unitsSold,\n    return_rate_pct: rate,\n    rate_significant: unitsSold >= MIN_SALES_FOR_RATE,\n    top_reason: topReason,\n    reasons,\n  };\n});\n\n// Money first: on a small refund set the unit counter ties almost\n// everywhere, which would make the ranking arbitrary.\nrows.sort((a, b) => {\n  const byMoney = Math.round(b.refund_amount * 100) - Math.round(a.refund_amount * 100);\n  if (byMoney !== 0) return byMoney;\n  const byUnits = b.units_returned - a.units_returned;\n  if (byUnits !== 0) return byUnits;\n  return a.product_id - b.product_id;\n});\n\nconst top = rows.slice(0, config.limit).map((row, position) => ({ rank: position + 1, ...row }));\n\nreturn [\n  {\n    json: {\n      status: 'ok',\n      window,\n      totals: {\n        refunds_count: refundsCount,\n        orders_affected: ordersAffected,\n        refund_amount: Math.round(refundCents) / 100,\n        units_returned: unitsReturned,\n        full_refunds: fullRefunds,\n        partial_refunds: partialRefunds,\n        products_affected: products.size,\n        reasons: sortedCounter(globalReasons),\n      },\n      diagnostics: {\n        detail_calls: detailCalls,\n        excluded_by_status: selection.excludedByStatus || 0,\n        non_product_lines: nonProductLines,\n        amount_mismatches: amountMismatches,\n      },\n      top,\n      limit: config.limit,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        -96
+      ],
+      "id": "b1c5dff6-6991-4db1-a74d-5637b15ed74c",
+      "name": "aggregate-returns"
+    }
+  ],
+  "connections": {
+    "tool-input": {
+      "main": [
+        [
+          {
+            "node": "prepare-request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepare-request": {
+      "main": [
+        [
+          {
+            "node": "route-valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route-valid": {
+      "main": [
+        [
+          {
+            "node": "fetch-orders",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "invalid-input-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fetch-orders": {
+      "main": [
+        [
+          {
+            "node": "select-refunded-orders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "select-refunded-orders": {
+      "main": [
+        [
+          {
+            "node": "fetch-refund-details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fetch-refund-details": {
+      "main": [
+        [
+          {
+            "node": "aggregate-returns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "tags": []
+}
