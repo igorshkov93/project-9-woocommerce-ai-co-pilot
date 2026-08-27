@@ -1,0 +1,323 @@
+{
+  "name": "13b-tool-confirm-coupon",
+  "description": null,
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{ \"category_id\": 67, \"discount_percent\": 15, \"expires_days\": 14 }"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "99b53bbd-adce-4131-86b5-ab1ef798bb25",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "pq7kv3LFX1sB9Eaf",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/pq7kv3LFX1sB9Eaf",
+          "cachedResultName": "13a-tool-propose-coupon"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "category_id": "={{$json.category_id}}",
+            "discount_percent": "={{$json.discount_percent}}",
+            "expires_days": "={{$json.expires_days}}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "category_id",
+              "displayName": "category_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "discount_percent",
+              "displayName": "discount_percent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "expires_days",
+              "displayName": "expires_days",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        224,
+        0
+      ],
+      "id": "06603c3e-d0c6-446f-b926-76c5714546d8",
+      "name": "call-propose"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "54572130-fba2-4003-b788-517c25d2514f",
+              "leftValue": "={{$json.status}}",
+              "rightValue": "proposed",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        0
+      ],
+      "id": "77cffb5c-0986-4d09-b5fb-1b1d78ba615c",
+      "name": "route-status"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: $input.first().json }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        96
+      ],
+      "id": "0de7a6a7-3f49-47ab-b0bc-e0e9ea13c7db",
+      "name": "passthrough-response"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4ee4c60a-56d3-4518-9e91-bcef2ac3ff09",
+              "leftValue": "={{$json.would_be_duplicate}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        -96
+      ],
+      "id": "984265d7-72d3-4142-bbf2-67619e529292",
+      "name": "route-duplicate"
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.first().json;\nreturn [{\n  json: {\n    status: 'duplicate',\n    coupon_id: result.existing_coupon.id,\n    code: result.existing_coupon.code,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -192
+      ],
+      "id": "dbc894b0-3358-4098-8a1d-b648cf0adc36",
+      "name": "duplicate-response"
+    },
+    {
+      "parameters": {
+        "jsCode": "const propose = $input.first().json;\n\nconst wooBaseUrl = ($env.WOO_STORE_URL || '').replace(/\\/+$/, '');\nconst key = $env.WOO_CONSUMER_KEY || '';\nconst secret = $env.WOO_CONSUMER_SECRET || '';\nconst authHeader = 'Basic ' + Buffer.from(`${key}:${secret}`).toString('base64');\n\nreturn [{\n  json: {\n    wooBaseUrl,\n    authHeader,\n    payload: propose.payload,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "id": "7575a0b0-fdc3-432a-b130-c75a52d73189",
+      "name": "build-auth"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.wooBaseUrl }}/wp-json/wc/v3/coupons ",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.authHeader }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.payload }}",
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "6c364621-58f2-4f35-b36a-b39ee5fe8eab",
+      "name": "create-coupon"
+    },
+    {
+      "parameters": {
+        "jsCode": "const created = $input.first().json;\nconst payload = $('build-auth').first().json.payload;\n\nreturn [{\n  json: {\n    status: 'created',\n    coupon_id: created.id,\n    code: created.code,\n    payload,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        0
+      ],
+      "id": "c76463de-4365-4ae5-b4e9-dfb0a6baa059",
+      "name": "created-response"
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "call-propose",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "call-propose": {
+      "main": [
+        [
+          {
+            "node": "route-status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route-status": {
+      "main": [
+        [
+          {
+            "node": "route-duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "passthrough-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route-duplicate": {
+      "main": [
+        [
+          {
+            "node": "duplicate-response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "build-auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "build-auth": {
+      "main": [
+        [
+          {
+            "node": "create-coupon",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create-coupon": {
+      "main": [
+        [
+          {
+            "node": "created-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "tags": []
+}

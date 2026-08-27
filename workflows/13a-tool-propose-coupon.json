@@ -1,0 +1,373 @@
+{
+  "name": "13a-tool-propose-coupon",
+  "description": null,
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{ \"category_id\": 67, \"discount_percent\": 15, \"expires_days\": 14 }"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        16
+      ],
+      "id": "faff69bd-bb73-47c5-8b7f-d290db861070",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\nconst categoryId = input.category_id;\nconst discountPercent = input.discount_percent;\nconst expiresDays = input.expires_days ?? 14;\n\nlet error = null;\nif (typeof categoryId !== 'number' || !Number.isInteger(categoryId)) {\n  error = 'category_id must be an integer';\n} else if (typeof discountPercent !== 'number' || discountPercent <= 0 || discountPercent > 100) {\n  error = 'discount_percent must be a number in (0, 100]';\n} else if (typeof expiresDays !== 'number' || expiresDays < 1) {\n  error = 'expires_days must be >= 1';\n}\n\nconst wooBaseUrl = ($env.WOO_STORE_URL || '').replace(/\\/+$/, '');\nconst key = $env.WOO_CONSUMER_KEY || '';\nconst secret = $env.WOO_CONSUMER_SECRET || '';\nconst authHeader = 'Basic ' + Buffer.from(`${key}:${secret}`).toString('base64');\n\nreturn [{\n  json: {\n    valid: error === null,\n    error,\n    category_id: categoryId,\n    discount_percent: discountPercent,\n    expires_days: expiresDays,\n    wooBaseUrl,\n    authHeader,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        16
+      ],
+      "id": "f2116046-dd65-4599-bf22-9f4a4eeb6fda",
+      "name": "prepare-request"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3f6e9863-cb77-4683-b660-c3fca53c84be",
+              "leftValue": "={{$json.valid}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        16
+      ],
+      "id": "33719a02-6135-43d4-9426-4b7b8f0faf50",
+      "name": "route-valid"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    status: 'invalid_input',\n    message: $('prepare-request').first().json.error,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        112
+      ],
+      "id": "2f94f88f-4eaf-4dac-8d98-1f41957f6e82",
+      "name": "invalid-input-response"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('prepare-request').first().json.wooBaseUrl }}/wp-json/wc/v3/products/categories",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "per_page",
+              "value": "100"
+            },
+            {
+              "name": "orderby",
+              "value": "id"
+            },
+            {
+              "name": "order",
+              "value": "asc"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization ",
+              "value": "={{ $('prepare-request').first().json.authHeader }}"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.body.length === 0 }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        672,
+        -80
+      ],
+      "id": "8b5e56d7-4e00-49e8-a1b0-c4339a4dc943",
+      "name": "fetch-categories",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const categoryId = $('prepare-request').first().json.category_id;\nconst categories = $input.all().map(item => item.json).filter(c => c && c.id !== undefined);\n\nconst byId = {};\nconst childrenOf = {};\nfor (const cat of categories) {\n  byId[cat.id] = cat;\n  const parent = cat.parent ?? 0;\n  if (!childrenOf[parent]) childrenOf[parent] = [];\n  childrenOf[parent].push(cat);\n}\n\nif (!byId[categoryId]) {\n  return [{ json: { found: false } }];\n}\n\nfunction collectDescendants(id) {\n  let ids = [id];\n  for (const child of (childrenOf[id] || [])) {\n    ids = ids.concat(collectDescendants(child.id));\n  }\n  return ids;\n}\n\nreturn [{\n  json: {\n    found: true,\n    category: { id: byId[categoryId].id, slug: byId[categoryId].slug, name: byId[categoryId].name },\n    descendant_category_ids: collectDescendants(categoryId),\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -80
+      ],
+      "id": "71975f8a-b325-4b9a-863c-5ba22fd42395",
+      "name": "resolve-descendants"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d5e93916-d6b4-4b96-a387-375aa1a9299c",
+              "leftValue": "={{$json.found}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1120,
+        -80
+      ],
+      "id": "48b8f869-c16f-4a2a-b7a9-85876c926546",
+      "name": "route-found"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    status: 'no_data',\n    message: `category id ${$('prepare-request').first().json.category_id} not found`,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        16
+      ],
+      "id": "b57401a1-cb37-40e9-97fa-324b86e85db5",
+      "name": "no-data-response"
+    },
+    {
+      "parameters": {
+        "jsCode": "const prep = $('prepare-request').first().json;\nconst resolved = $input.first().json;\n\nconst businessTz = $env.BUSINESS_TIMEZONE || 'Europe/Kyiv';\nconst today = DateTime.now().setZone(businessTz).toISODate();\nconst todayCompact = today.replace(/-/g, '');\nconst expiresOn = DateTime.now().setZone(businessTz).plus({ days: prep.expires_days }).toISODate();\n\nconst discountToken = String(prep.discount_percent).replace('.', '_');\nconst code = `${resolved.category.slug.toUpperCase()}-${discountToken}-${todayCompact}`;\n\nconst payload = {\n  code,\n  discount_type: 'percent',\n  amount: prep.discount_percent.toFixed(2),\n  date_expires: expiresOn,\n  individual_use: true,\n  exclude_sale_items: true,\n  usage_limit_per_user: 1,\n  product_categories: resolved.descendant_category_ids,\n};\n\nreturn [{\n  json: {\n    category: resolved.category,\n    descendant_category_ids: resolved.descendant_category_ids,\n    payload,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        -176
+      ],
+      "id": "7bf27456-d609-4439-9ca9-808c26d585dd",
+      "name": "build-payload"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('prepare-request').first().json.wooBaseUrl }}/wp-json/wc/v3/coupons",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ $('build-payload').first().json.payload.code }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('prepare-request').first().json.authHeader }}"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1568,
+        -176
+      ],
+      "id": "4c68fcef-0750-49c3-a0d4-a3aee2bfcd49",
+      "name": "check-duplicate",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const buildResult = $('build-payload').first().json;\nconst dupItems = $input.all().map(i => i.json).filter(c => c && c.id !== undefined);\nconst existing = dupItems.length > 0 ? dupItems[0] : null;\n\nreturn [{\n  json: {\n    status: 'proposed',\n    category: buildResult.category,\n    descendant_category_ids: buildResult.descendant_category_ids,\n    would_be_duplicate: existing !== null,\n    existing_coupon: existing ? { id: existing.id, code: existing.code } : null,\n    payload: buildResult.payload,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        -176
+      ],
+      "id": "c7302de1-4b8c-49c3-8ff7-48ebaec35a21",
+      "name": "propose-response"
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "prepare-request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepare-request": {
+      "main": [
+        [
+          {
+            "node": "route-valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route-valid": {
+      "main": [
+        [
+          {
+            "node": "fetch-categories",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "invalid-input-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fetch-categories": {
+      "main": [
+        [
+          {
+            "node": "resolve-descendants",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "resolve-descendants": {
+      "main": [
+        [
+          {
+            "node": "route-found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route-found": {
+      "main": [
+        [
+          {
+            "node": "build-payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "no-data-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "build-payload": {
+      "main": [
+        [
+          {
+            "node": "check-duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check-duplicate": {
+      "main": [
+        [
+          {
+            "node": "propose-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "tags": []
+}
