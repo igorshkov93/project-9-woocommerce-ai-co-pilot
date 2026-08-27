@@ -1,0 +1,360 @@
+{
+  "name": "14-tool-draft-abandoned-cart-email",
+  "description": null,
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{ \"cart_id\": null }"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "14e02b56-0a53-433a-964b-55fcc5ddede1",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst cartId = typeof input.cart_id === 'number' ? input.cart_id : null;\n\nconst copilotApiBase = $env.COPILOT_API_BASE || '';\nconst marker = '/wp-json';\nconst idx = copilotApiBase.indexOf(marker);\nconst siteRoot = idx === -1 ? copilotApiBase : copilotApiBase.slice(0, idx);\n\nconst wpUser = $env.WP_APP_USER || '';\nconst wpPassword = $env.WP_APP_PASSWORD || '';\nconst wpAuthHeader = 'Basic ' + Buffer.from(`${wpUser}:${wpPassword}`).toString('base64');\n\nreturn [{\n  json: {\n    cartId,\n    siteRoot,\n    wpAuthHeader,\n    anthropicApiKey: $env.ANTHROPIC_API_KEY || '',\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "8a242e54-384c-4eb6-b25c-f4ebd02ff877",
+      "name": "prepare-request"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.siteRoot }}/wp-json/copilot/v1/abandoned-carts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.wpAuthHeader }}"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        448,
+        0
+      ],
+      "id": "3e5f617d-1b68-49ed-8d65-d334d302a263",
+      "name": "fetch-abandoned-carts",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const prep = $('prepare-request').first().json;\nconst response = $input.first().json;\nconst carts = response.carts || [];\n\nconst candidates = carts.filter(c => !c.recovered);\n\nlet target = null;\nif (prep.cartId !== null) {\n  target = candidates.find(c => c.id === prep.cartId) || null;\n} else if (candidates.length > 0) {\n  const sorted = [...candidates].sort((a, b) => {\n    if (b.cart_total !== a.cart_total) return b.cart_total - a.cart_total;\n    return a.minutes_since_update - b.minutes_since_update;\n  });\n  target = sorted[0];\n}\n\nif (!target) {\n  return [{ json: { found: false } }];\n}\n\nconst currency = target.currency;\nconst lines = [\n  `Customer: ${target.first_name}`,\n  `Cart abandoned: ${target.minutes_since_update} minutes ago`,\n  `Currency: ${currency}`,\n  'Items:',\n];\nfor (const item of target.items) {\n  lines.push(`- ${item.name} x${item.quantity} @ ${currency} ${item.price.toFixed(2)} = ${currency} ${item.line_total.toFixed(2)}`);\n}\nlines.push(`Cart total: ${currency} ${target.cart_total.toFixed(2)}`);\n\nreturn [{\n  json: {\n    found: true,\n    cart: {\n      id: target.id,\n      email: target.email,\n      first_name: target.first_name,\n      cart_total: target.cart_total,\n      currency: target.currency,\n    },\n    promptText: lines.join('\\n'),\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "38b5988a-7f8c-45a0-80dc-b75fa43b53a2",
+      "name": "select-target-cart"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a6d5b8c6-7653-4d0b-99f0-fd29d43f7dc4",
+              "leftValue": "={{$json.found}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        896,
+        0
+      ],
+      "id": "76ec47c2-20bc-42b4-a5e9-6d0bfabacb6e",
+      "name": "route-found"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { status: 'no_data', message: 'no eligible abandoned cart found' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        96
+      ],
+      "id": "e8eeb08b-9739-4efc-aedd-dbc405f66f4a",
+      "name": "no-data-response"
+    },
+    {
+      "parameters": {
+        "jsCode": "const prep = $('prepare-request').first().json;\nconst selected = $input.first().json;\n\nconst systemPrompt = `You are a customer-retention email copywriter for an online store selling electronics and lifestyle products. Write a short, warm, low-pressure cart-recovery email for the customer described in the user message.\n\nRules:\n- Use ONLY the facts given: product names, quantities, prices, cart total, currency, first name.\n- Do NOT invent stock levels, deadlines, discounts, coupon codes, or any claim not present in the provided data.\n- Do not offer or mention any discount, percentage off, or promo code - none has been issued for this email.\n- Keep the tone friendly and low-pressure, in English.\n- Respond with ONLY a single JSON object, no markdown code fences, no extra commentary, in exactly this shape:\n{\"subject\": \"<email subject line>\", \"body\": \"<plain text email body>\"}`;\n\nreturn [{\n  json: {\n    anthropicApiKey: prep.anthropicApiKey,\n    requestBody: {\n      model: 'claude-haiku-4-5-20251001',\n      max_tokens: 500,\n      system: systemPrompt,\n      messages: [{ role: 'user', content: selected.promptText }],\n    },\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        -96
+      ],
+      "id": "f7a24edc-2093-4250-b9c2-c21c2d58b98c",
+      "name": "build-haiku-request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $json.anthropicApiKey }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.requestBody }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1344,
+        -96
+      ],
+      "id": "9cbdd10e-9d70-4f95-9d92-a34ed867441c",
+      "name": "call-haiku"
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.first().json;\nconst textBlocks = (payload.content || [])\n  .filter(b => b.type === 'text')\n  .map(b => b.text || '');\nlet text = textBlocks.join('').trim();\n\nif (text.startsWith('```')) {\n  const firstNewline = text.indexOf('\\n');\n  text = firstNewline === -1 ? text.slice(3) : text.slice(firstNewline + 1);\n  if (text.endsWith('```')) text = text.slice(0, -3);\n  text = text.trim();\n}\n\nif (!text) {\n  return [{ json: { parsed: false, error: `empty text; stop_reason=${payload.stop_reason}` } }];\n}\n\ntry {\n  const draft = JSON.parse(text);\n  if (!draft.subject || !draft.body) {\n    return [{ json: { parsed: false, error: 'missing subject/body in LLM response' } }];\n  }\n  return [{ json: { parsed: true, subject: draft.subject, body: draft.body } }];\n} catch (e) {\n  return [{ json: { parsed: false, error: `JSON parse failed: ${e.message}` } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        -96
+      ],
+      "id": "4f8a284a-5e96-4eb1-baa3-c31e25f83a30",
+      "name": "parse-haiku-response"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7b2a8330-d477-40ec-b353-a7b832a0e5aa",
+              "leftValue": "={{$json.parsed}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1792,
+        -96
+      ],
+      "id": "975968ac-716f-4a40-a47a-2147a5278c79",
+      "name": "route-parsed"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { status: 'upstream_error', message: $json.error } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        0
+      ],
+      "id": "2022a9ee-aade-43ae-a851-0ce3e48930a2",
+      "name": "upstream-error-response"
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $input.first().json;\nconst cart = $('select-target-cart').first().json.cart;\n\nreturn [{\n  json: {\n    status: 'ok',\n    cart,\n    subject: parsed.subject,\n    body: parsed.body,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        -192
+      ],
+      "id": "80bf371a-1eff-464a-9273-14eeaf4098f2",
+      "name": "ok-response"
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "prepare-request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepare-request": {
+      "main": [
+        [
+          {
+            "node": "fetch-abandoned-carts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fetch-abandoned-carts": {
+      "main": [
+        [
+          {
+            "node": "select-target-cart",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "select-target-cart": {
+      "main": [
+        [
+          {
+            "node": "route-found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route-found": {
+      "main": [
+        [
+          {
+            "node": "build-haiku-request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "no-data-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "build-haiku-request": {
+      "main": [
+        [
+          {
+            "node": "call-haiku",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "call-haiku": {
+      "main": [
+        [
+          {
+            "node": "parse-haiku-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "parse-haiku-response": {
+      "main": [
+        [
+          {
+            "node": "route-parsed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route-parsed": {
+      "main": [
+        [
+          {
+            "node": "ok-response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "upstream-error-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "tags": []
+}
