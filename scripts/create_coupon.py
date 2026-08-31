@@ -45,8 +45,6 @@ def get_env(name: str) -> str:
 
 
 def get_verify_tls() -> bool:
-    # NOTE: .env key is WOO_VERIFY_TLS (see known debt: woo_client.py reads
-    # WOO_VERIFY_SSL, .env.example has WOO_VERIFY_TLS). Using the real key.
     raw = os.environ.get("WOO_VERIFY_TLS", "false")
     return raw.strip().lower() not in ("false", "0", "no")
 
