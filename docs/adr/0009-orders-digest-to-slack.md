@@ -108,3 +108,75 @@ bot token added as a credential in n8n.
 - Adding `SLACK_DIGEST_CHANNEL` to `.env` means `.env.example` needs the new
   key too, and the Slack credential needs to exist in n8n before this
   workflow's nodes can be tested at all (see Prerequisite above).
+
+## Addendum: Implementation status (31.08.2026)
+
+`16-tool-send-orders-digest` was built, tested end-to-end (including a live
+message to `#orders-digest`), and wired into `15-ai-agent` as its sixth
+tool. Decisions 1-4 and 7 were implemented as written. Decisions 5 and 6
+had to deviate from the original plan due to platform constraints
+discovered during the build; both deviations are recorded below, along with
+three implementation gotchas worth keeping for future n8n work on this
+project.
+
+### Deviation from decision 5: channel is hardcoded, not `$env`
+
+This n8n instance has environment-variable access disallowed in node
+expressions (`$env` throws "access to env vars denied" - an instance-level
+security setting, not something this project's `.env` controls). n8n's
+`$vars` mechanism, which would have been the correct workaround, requires a
+paid plan not available here. The Slack channel (`#orders-digest`) and the
+WooCommerce store URL (needed by `fetch-coupons-today`, same constraint)
+are both hardcoded directly into their respective HTTP Request nodes
+instead. Consequence: `SLACK_DIGEST_CHANNEL` was never added to `.env` /
+`.env.example` - there is nothing for it to configure. If this workflow is
+ever reused against a different Slack workspace or WooCommerce store, the
+channel name and store URL need to be edited directly in the sanitized
+workflow JSON before import, not supplied via environment configuration.
+
+### Deviation from decision 6: Slack Block Kit sent via raw HTTP, not the Slack node
+
+n8n's native Slack node, with "Message Type: Blocks", did not actually
+transmit the custom Block Kit payload to the Slack API - regardless of
+whether the `Blocks` field expression returned an array or a
+`JSON.stringify`'d string, Slack's response showed only an auto-generated
+`rich_text` block built from the fallback `text` field, meaning the
+`blocks` parameter was silently never sent. Worked around with a plain
+**HTTP Request** node (`post-slack-digest`) posting directly to
+`https://slack.com/api/chat.postMessage`, using Authentication:
+Predefined Credential Type -> Slack API (reusing the same bot token
+credential), Body Content Type: JSON, with `channel`, `text`, and `blocks`
+(each individually `JSON.stringify`'d) in the raw JSON body. This is more
+verbose than the native node but gives full, verifiable control over
+exactly what Slack receives.
+
+### Implementation gotchas worth keeping
+
+- **Parallel branches converging on one node's input do not act as a
+  synchronization barrier.** Wiring `call-orders-summary`,
+  `call-top-returned`, and `fetch-coupons-today` directly into
+  `format-digest`'s single input caused it to fire as soon as the first
+  branch completed, before the others had run - `$('call-orders-summary')`
+  then threw `hasn't been executed`. Fixed by inserting an explicit
+  **Merge** node (`join-digest-sources`, Number of Inputs: 3, Mode:
+  Append) between the three branches and `format-digest`; Merge is the
+  only node type in this n8n version that actually waits for all its
+  declared inputs before proceeding. `format-digest` still reads each
+  source via `$('node-name')` by name rather than from Merge's own output,
+  to avoid field collisions (`call-orders-summary` and `call-top-returned`
+  both have a `status` field that would otherwise overwrite each other).
+- **`require('luxon')` is disallowed in this instance's Code node
+  sandbox** ("Module 'luxon' is disallowed"), even though it is a
+  documented, commonly-referenced n8n pattern elsewhere. n8n's built-in
+  `$now`/`$today` are already Luxon `DateTime` instances, so
+  `const DateTime = $now.constructor` recovers the full `DateTime` class
+  (including static methods like `DateTime.fromISO`) without a `require`
+  call. Used in `prepare-request` to parse and default the `date_from`/
+  `date_to` window.
+- **Gemini 503s needed Retry On Fail.** `call-ai-agent` began
+  intermittently failing with `[503 Service Unavailable] This model is
+  currently experiencing high demand` from Google's side (distinct from
+  the earlier 429 daily-quota exhaustion) - a transient infrastructure
+  issue, not a bug in this project. Retry On Fail was enabled on
+  `call-ai-agent` (3 tries, 5s wait) so these transient errors resolve
+  automatically instead of surfacing as a dead Telegram reply.
