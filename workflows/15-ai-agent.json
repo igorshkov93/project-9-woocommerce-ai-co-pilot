@@ -29,14 +29,14 @@
         "promptType": "define",
         "text": "={{ $json.text }}",
         "options": {
-          "systemMessage": "You are an operational assistant for the owner of a WooCommerce electronics/lifestyle store, communicating via Telegram. You are NOT customer-facing - you speak only with the store owner.\n\nYou have access to tools that let you look up real store data (orders, returns, customer/product lookups) and prepare marketing content. Always ground your answers strictly in the data returned by your tools - never invent numbers, product names, customer names, or claims. If a question needs real data, call the relevant tool before answering.\n\nIf a request is ambiguous (e.g. which category, which time period, which customer), ask a short clarifying question instead of guessing.\n\nYou can propose a discount coupon, but you can NEVER create one yourself - coupon creation only happens when the store owner taps a Confirm button in Telegram. If you propose a coupon, clearly state the terms (category, discount percent, expiry) so the owner can decide.\n\nKeep replies concise and to the point - this is a working tool for a busy store owner, not customer support.",
+          "systemMessage": "You are an operational assistant for the owner of a WooCommerce electronics/lifestyle store, communicating via Telegram. You are NOT customer-facing - you speak only with the store owner.\nYou have access to tools that let you look up real store data (orders, returns, customer/product lookups), prepare marketing content, and send an orders digest to the team's Slack channel. Always ground your answers strictly in the data returned by your tools - never invent numbers, product names, customer names, or claims. If a question needs real data, call the relevant tool before answering.\nIf a request is ambiguous (e.g. which category, which time period, which customer), ask a short clarifying question instead of guessing.\nYou can propose a discount coupon, but you can NEVER create one yourself - coupon creation only happens when the store owner taps a Confirm button in Telegram. If you propose a coupon, clearly state the terms (category, discount percent, expiry) so the owner can decide.\nWhen the owner asks you to send/post an orders digest to Slack, use the digest tool and just confirm briefly in Telegram whether it was sent successfully - do not repeat the full digest content in the chat, since it only lives in Slack.\nKeep replies concise and to the point - this is a working tool for a busy store owner, not customer support.",
           "returnIntermediateSteps": true
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3.1,
       "position": [
-        544,
+        608,
         -32
       ],
       "id": "3787cce1-5086-48a9-9f46-985bff8c26b8",
@@ -50,8 +50,8 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1.1,
       "position": [
-        224,
-        192
+        288,
+        80
       ],
       "id": "cb534749-0974-4e01-982a-1e887e0f0f0c",
       "name": "Google Gemini Chat Model",
@@ -70,8 +70,8 @@
       "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
       "typeVersion": 1.4,
       "position": [
-        640,
-        368
+        1024,
+        80
       ],
       "id": "64508f98-63ed-4fc7-835c-ef71a7aaefc6",
       "name": "Simple Memory"
@@ -130,7 +130,7 @@
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.2,
       "position": [
-        352,
+        400,
         192
       ],
       "id": "c7fc3c6d-ba90-4fa1-96c4-7d956deb477e",
@@ -201,7 +201,7 @@
       "typeVersion": 2.2,
       "position": [
         496,
-        192
+        256
       ],
       "id": "1ba1c76d-492c-4cd3-b8cb-a5d0d32d2f2c",
       "name": "get_orders_summary"
@@ -270,7 +270,7 @@
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.2,
       "position": [
-        704,
+        624,
         192
       ],
       "id": "6bc64a3f-6d23-4745-aa3c-c1a3b404b5cf",
@@ -330,8 +330,8 @@
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.2,
       "position": [
-        816,
-        192
+        752,
+        256
       ],
       "id": "5dccfdf1-965a-41d6-8835-1e11f773417f",
       "name": "propose_coupon"
@@ -372,7 +372,7 @@
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.2,
       "position": [
-        912,
+        880,
         192
       ],
       "id": "775ea73d-eff9-4c90-8d75-13307ca2d85d",
@@ -380,16 +380,66 @@
     },
     {
       "parameters": {
-        "jsCode": "const agentOutput = $input.first().json;\nconst replyText = agentOutput.output ?? '';\nconst steps = agentOutput.intermediateSteps ?? [];\n\nlet button = null;\n\nfor (const step of steps) {\n  const toolName = step.action?.tool;\n  if (toolName !== 'propose_coupon') continue;\n\n  let observation = step.observation;\n  if (typeof observation === 'string') {\n    try {\n      observation = JSON.parse(observation);\n    } catch (e) {\n      continue;\n    }\n  }\n\n  // Workflow Tool observations come back in n8n's standard items shape:\n  // an array of { json: {...} } (or, seen in practice, an array of the\n  // raw json objects directly) - unwrap either form to a plain object.\n  if (Array.isArray(observation)) {\n    const first = observation[0];\n    observation = first?.json ?? first ?? {};\n  }\n\n  if (observation?.status !== 'proposed') continue;\n\n  const toolInput = step.action.toolInput ?? {};\n  const categoryId = toolInput.category_id;\n  const discountPercent = toolInput.discount_percent;\n  const expiresDays = toolInput.expires_days;\n\n  if (categoryId === undefined || discountPercent === undefined || expiresDays === undefined) {\n    continue;\n  }\n\n  const categoryName = observation.category?.name ?? `category ${categoryId}`;\n\n  button = {\n    label: `✅ Confirm ${discountPercent}% off ${categoryName}`,\n    callback_data: `cc:${categoryId}:${discountPercent}:${expiresDays}`,\n  };\n}\n\nreturn [{\n  json: {\n    reply_text: replyText,\n    button,\n  },\n}];"
+        "jsCode": "const agentOutput = $input.first().json;\nconst replyText = agentOutput.output ?? '';\nconst steps = agentOutput.intermediateSteps ?? [];\n\nlet button = null;\n\nfor (const step of steps) {\n  const toolName = step.action?.tool;\n  if (toolName !== 'propose_coupon') continue;\n\n  let observation = step.observation;\n  if (typeof observation === 'string') {\n    try {\n      observation = JSON.parse(observation);\n    } catch (e) {\n      continue;\n    }\n  }\n\n// Workflow Tool observations come back in n8n's standard items shape:\n// an array of { json: {...} } (or, seen in practice, an array of the\n// raw json objects directly) - unwrap either form to a plain object.\n// They can also arrive as a JSON-stringified array (known n8n Call\n// Workflow Tool quirk) - parse it first if so.\nif (typeof observation === 'string') {\n  try {\n    observation = JSON.parse(observation);\n  } catch (e) {\n    observation = null;\n  }\n}\n  \nif (Array.isArray(observation)) {\n  const first = observation[0];\n  observation = first?.json ?? first ?? {};\n}\n\n  if (observation?.status !== 'proposed') continue;\n\n  const toolInput = step.action.toolInput ?? {};\n  const categoryId = toolInput.category_id;\n  const discountPercent = toolInput.discount_percent;\n  const expiresDays = toolInput.expires_days;\n\n  if (categoryId === undefined || discountPercent === undefined || expiresDays === undefined) {\n    continue;\n  }\n\n  const categoryName = observation.category?.name ?? `category ${categoryId}`;\n\n  button = {\n    label: `✅ Confirm ${discountPercent}% off ${categoryName}`,\n    callback_data: `cc:${categoryId}:${discountPercent}:${expiresDays}`,\n  };\n}\n\nreturn [{\n  json: {\n    reply_text: replyText,\n    button,\n  },\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1200,
+        1328,
         -32
       ],
       "id": "9c21224e-58b2-476b-a666-29228cf91f5c",
       "name": "build-coupon-button"
+    },
+    {
+      "parameters": {
+        "description": "     Sends an orders digest (order summary for a period, top returned products, and coupons created today) to the team's Slack channel #orders-digest. Use this when the user asks to send/post a digest, summary, or report to Slack. Does not return the digest content to the chat — the content only appears in Slack.",
+        "workflowId": {
+          "__rl": true,
+          "value": "c3XTBpr3nduVrRK4",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/c3XTBpr3nduVrRK4",
+          "cachedResultName": "16-tool-send-orders-digest"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date_from": "={{ $fromAI('date_from', 'Start date (YYYY-MM-DD) for the digest period. Leave empty to default to 7 days before date_to or today.', 'string', '') }}",
+            "date_to": "={{ $fromAI('date_to', 'End date (YYYY-MM-DD) for the digest period. Leave empty to default to today.', 'string', '') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "date_from",
+              "displayName": "date_from",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "date_to",
+              "displayName": "date_to",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        1008,
+        256
+      ],
+      "id": "a75d8058-f51f-4cb7-890f-5fc91e0e342a",
+      "name": "send_orders_digest"
     }
   ],
   "pinData": {},
@@ -488,6 +538,17 @@
           {
             "node": "build-coupon-button",
             "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send_orders_digest": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
             "index": 0
           }
         ]
