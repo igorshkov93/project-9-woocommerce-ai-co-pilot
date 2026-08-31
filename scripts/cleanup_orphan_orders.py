@@ -141,7 +141,9 @@ def main() -> None:
 
     if not args.apply:
         print(
-            json.dumps({"status": "dry_run", "matches": matches}, indent=2, ensure_ascii=False)
+            json.dumps(
+                {"status": "dry_run", "matches": matches}, indent=2, ensure_ascii=False
+            )
         )
         return
 
@@ -150,7 +152,11 @@ def main() -> None:
         delete_order(base_url, key, secret, verify_ssl, match["order_id"])
         deleted.append(match)
 
-    print(json.dumps({"status": "deleted", "orders": deleted}, indent=2, ensure_ascii=False))
+    print(
+        json.dumps(
+            {"status": "deleted", "orders": deleted}, indent=2, ensure_ascii=False
+        )
+    )
 
 
 if __name__ == "__main__":
