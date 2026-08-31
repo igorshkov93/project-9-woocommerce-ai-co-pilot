@@ -1,7 +1,5 @@
 {
   "name": "09-telegram-gateway",
-  "description": null,
-  "active": false,
   "nodes": [
     {
       "parameters": {
@@ -14,8 +12,8 @@
       "type": "n8n-nodes-base.telegramTrigger",
       "typeVersion": 1.3,
       "position": [
-        0,
-        0
+        -32,
+        -112
       ],
       "id": "891c3072-3693-4bad-b268-314f974ab033",
       "name": "Telegram Trigger",
@@ -29,37 +27,13 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $json.chatId }}",
-        "text": "={{ 'echo: ' + $json.text }}",
-        "additionalFields": {
-          "appendAttribution": false
-        }
-      },
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        672,
-        -96
-      ],
-      "id": "be11de2e-109b-4374-a560-0353dda6d6aa",
-      "name": "echo-reply",
-      "webhookId": "__REPLACE_WITH_YOUR_WEBHOOK_ID__",
-      "credentials": {
-        "telegramApi": {
-          "id": "__REPLACE_WITH_YOUR_CREDENTIAL_ID__",
-          "name": "Telegram account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Fail-closed access control. Only chat IDs listed in the\n// TELEGRAM_OWNER_CHAT_ID env var may use this bot.\n// This node only classifies; routing happens in the IF node downstream.\nconst raw = $env.TELEGRAM_OWNER_CHAT_ID || '';\nconst allowed = raw.split(',').map((s) => s.trim()).filter(Boolean);\n\nconst update = $input.first().json;\nconst source = update.message ?? update.callback_query?.message ?? {};\nconst from = update.message?.from ?? update.callback_query?.from ?? {};\n\nconst chatId = source.chat?.id;\nconst userId = from.id;\nconst text = update.message?.text ?? update.callback_query?.data ?? '';\n\nconst isAllowed = chatId !== undefined && allowed.includes(String(chatId));\n\nreturn [\n  {\n    json: {\n      allowed: isAllowed,\n      reason: isAllowed ? 'ok' : 'chat_id_not_in_whitelist',\n      chatId,\n      userId,\n      text,\n      updateId: update.update_id,\n      receivedAt: new Date().toISOString(),\n    },\n  },\n];"
+        "jsCode": "// Fail-closed access control. Only chat IDs listed in the\n// TELEGRAM_OWNER_CHAT_ID env var may use this bot.\n// This node only classifies; routing happens in the IF node downstream.\nconst raw = $env.TELEGRAM_OWNER_CHAT_ID || '';\nconst allowed = raw.split(',').map((s) => s.trim()).filter(Boolean);\nconst update = $input.first().json;\nconst updateType = update.callback_query ? 'callback_query' : update.message ? 'message' : 'unknown';\nconst source = update.message ?? update.callback_query?.message ?? {};\nconst from = update.message?.from ?? update.callback_query?.from ?? {};\nconst chatId = source.chat?.id;\nconst userId = from.id;\nconst text = update.message?.text ?? update.callback_query?.data ?? '';\nconst callbackQueryId = update.callback_query?.id;\nconst isAllowed = chatId !== undefined && allowed.includes(String(chatId));\nreturn [\n  {\n    json: {\n      allowed: isAllowed,\n      reason: isAllowed ? 'ok' : 'chat_id_not_in_whitelist',\n      updateType,\n      chatId,\n      userId,\n      text,\n      callbackQueryId,\n      updateId: update.update_id,\n      receivedAt: new Date().toISOString(),\n    },\n  },\n];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        224,
-        0
+        192,
+        -112
       ],
       "id": "bedde8e5-7f84-4de1-b7bf-f074118b90d7",
       "name": "guard-whitelist"
@@ -92,8 +66,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        448,
-        0
+        416,
+        -112
       ],
       "id": "2a945844-3581-442c-b766-fb68b11488ad",
       "name": "route-access"
@@ -103,13 +77,472 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        672,
-        96
+        640,
+        -16
       ],
       "id": "ba02bf78-51a6-4b89-9bed-f73ce6884e72",
       "name": "access-denied"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f506d9d1-0062-4d61-bb32-0d346ea0df4b",
+              "leftValue": "={{ $json.updateType }}",
+              "rightValue": "callback_query",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        640,
+        -208
+      ],
+      "id": "935e8e47-0197-4503-9417-ecf20ef2ca9a",
+      "name": "route-update-type"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse callback_data from a coupon-confirmation button tap.\n// Expected format: cc:{category_id}:{discount_percent}:{expires_days}\n// e.g. \"cc:67:15:14\"\nconst item = $input.first().json;\nconst raw = item.text || '';\nconst parts = raw.split(':');\n\nif (parts.length !== 4 || parts[0] !== 'cc') {\n  return [\n    {\n      json: {\n        ...item,\n        parseOk: false,\n        parseError: `Unrecognized callback_data format: \"${raw}\"`,\n      },\n    },\n  ];\n}\n\nconst categoryId = Number(parts[1]);\nconst discountPercent = Number(parts[2]);\nconst expiresDays = Number(parts[3]);\n\nconst isValid =\n  Number.isFinite(categoryId) &&\n  Number.isFinite(discountPercent) &&\n  Number.isFinite(expiresDays);\n\nif (!isValid) {\n  return [\n    {\n      json: {\n        ...item,\n        parseOk: false,\n        parseError: `Non-numeric fields in callback_data: \"${raw}\"`,\n      },\n    },\n  ];\n}\n\nreturn [\n  {\n    json: {\n      ...item,\n      parseOk: true,\n      category_id: categoryId,\n      discount_percent: discountPercent,\n      expires_days: expiresDays,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        -400
+      ],
+      "id": "8ec6adac-3281-499e-8389-79838c53917e",
+      "name": "parse-callback-data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b57f7525-c812-42c8-9d85-20cc68a84147",
+              "leftValue": "={{ $json.parseOk }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1088,
+        -400
+      ],
+      "id": "a062ecd8-7277-43a7-969e-c76aac32f6bd",
+      "name": "route-parse-ok"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "xMMJvbeEhWgO638l",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/xMMJvbeEhWgO638l",
+          "cachedResultName": "13b-tool-confirm-coupon"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "category_id": "={{ $json.category_id }}",
+            "discount_percent": "={{ $json.discount_percent }}",
+            "expires_days": "={{ $json.expires_days }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "category_id",
+              "displayName": "category_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "discount_percent",
+              "displayName": "discount_percent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "expires_days",
+              "displayName": "expires_days",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1312,
+        -496
+      ],
+      "id": "63117e52-c01f-4896-aefe-cf119e368b1b",
+      "name": "confirm-coupon"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.callback_query.message.chat.id }}",
+        "text": "=✅ Купон создан!\nКод: {{ $json.payload.code }}\nСкидка: {{ $json.payload.amount }}\nДействует до: {{ $json.payload.date_expires }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1760,
+        -592
+      ],
+      "id": "6aca1ea0-9432-47a1-95b0-7720e5eea5ae",
+      "name": "coupon-created-reply",
+      "webhookId": "__REPLACE_WITH_YOUR_WEBHOOK_ID__",
+      "credentials": {
+        "telegramApi": {
+          "id": "__REPLACE_WITH_YOUR_CREDENTIAL_ID__",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.callback_query.message.chat.id }}",
+        "text": "=⚠️ Не удалось обработать кнопку: {{ $json.parseError }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1312,
+        -304
+      ],
+      "id": "2c7184ec-57e9-4419-92e4-a635a8ca36fc",
+      "name": "parse-error-reply",
+      "webhookId": "__REPLACE_WITH_YOUR_WEBHOOK_ID__",
+      "credentials": {
+        "telegramApi": {
+          "id": "__REPLACE_WITH_YOUR_CREDENTIAL_ID__",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a721817e-de9b-4f53-8307-83ff65620023",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "created",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1536,
+        -496
+      ],
+      "id": "49aefeb9-a17b-44ee-8b51-64bf1b3f9c22",
+      "name": "route-coupon-status"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.callback_query.from.id }}",
+        "text": "=⚠️ Купон с такими параметрами уже существует: {{ $json.code }} (ID: {{ $json.coupon_id }}). Новый не создан.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1984,
+        -496
+      ],
+      "id": "b67fd454-341a-4c4f-853b-9c28f147a229",
+      "name": "coupon-duplicate-reply",
+      "webhookId": "__REPLACE_WITH_YOUR_WEBHOOK_ID__",
+      "credentials": {
+        "telegramApi": {
+          "id": "__REPLACE_WITH_YOUR_CREDENTIAL_ID__",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "U9vHoZs20B87omrC",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/U9vHoZs20B87omrC",
+          "cachedResultName": "15-ai-agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "chat_id": "={{ $json.chatId }}",
+            "text": "={{ $json.text }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "text",
+              "displayName": "text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        864,
+        -112
+      ],
+      "id": "4f32501b-07e0-43d5-a3f4-f11c21e33b9b",
+      "name": "call-ai-agent"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('guard-whitelist').item.json.chatId }}",
+        "text": "={{ $json.reply_text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1088,
+        -208
+      ],
+      "id": "f54089d0-7c93-4a21-be43-47f0b88278d1",
+      "name": "send-reply-text",
+      "webhookId": "__REPLACE_WITH_YOUR_WEBHOOK_ID__",
+      "credentials": {
+        "telegramApi": {
+          "id": "__REPLACE_WITH_YOUR_CREDENTIAL_ID__",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "862387a5-00eb-4a21-87ab-330666322ea4",
+              "leftValue": "={{ Boolean($json.button) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1088,
+        -16
+      ],
+      "id": "c4026008-be8c-4663-906c-51dee64c34f9",
+      "name": "route-has-button"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('guard-whitelist').item.json.chatId }}",
+        "text": "Подтвердите действие:",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json.button.label }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json.button.callback_data }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1312,
+        -16
+      ],
+      "id": "34ae7f11-ae89-4ba4-b218-ddf227beba25",
+      "name": "send-button-reply",
+      "webhookId": "__REPLACE_WITH_YOUR_WEBHOOK_ID__",
+      "credentials": {
+        "telegramApi": {
+          "id": "__REPLACE_WITH_YOUR_CREDENTIAL_ID__",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2b2bde54-e021-4c4f-a662-c596b0df8afa",
+              "leftValue": "={{ $('confirm-coupon').item.json.status }}",
+              "rightValue": "duplicate",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1760,
+        -400
+      ],
+      "id": "c54462fb-6696-4318-9b9d-cb0bbec7dc5c",
+      "name": "route-coupon-duplicate"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.callback_query.message.chat.id }}",
+        "text": "=⚠️ Не удалось создать купон: {{ $json.message || ('неизвестная ошибка (status: ' + $json.status + ')') }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1984,
+        -304
+      ],
+      "id": "dee07156-e288-4ee6-84d0-4f632f79e2ad",
+      "name": "coupon-error-reply",
+      "webhookId": "__REPLACE_WITH_YOUR_WEBHOOK_ID__",
+      "credentials": {
+        "telegramApi": {
+          "id": "__REPLACE_WITH_YOUR_CREDENTIAL_ID__",
+          "name": "Telegram account"
+        }
+      }
     }
   ],
+  "pinData": {},
   "connections": {
     "Telegram Trigger": {
       "main": [
@@ -120,11 +553,6 @@
             "index": 0
           }
         ]
-      ]
-    },
-    "echo-reply": {
-      "main": [
-        []
       ]
     },
     "guard-whitelist": {
@@ -142,7 +570,7 @@
       "main": [
         [
           {
-            "node": "echo-reply",
+            "node": "route-update-type",
             "type": "main",
             "index": 0
           }
@@ -155,14 +583,134 @@
           }
         ]
       ]
+    },
+    "route-update-type": {
+      "main": [
+        [
+          {
+            "node": "parse-callback-data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "call-ai-agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "parse-callback-data": {
+      "main": [
+        [
+          {
+            "node": "route-parse-ok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route-parse-ok": {
+      "main": [
+        [
+          {
+            "node": "confirm-coupon",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "parse-error-reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "confirm-coupon": {
+      "main": [
+        [
+          {
+            "node": "route-coupon-status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route-coupon-status": {
+      "main": [
+        [
+          {
+            "node": "coupon-created-reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "route-coupon-duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "call-ai-agent": {
+      "main": [
+        [
+          {
+            "node": "send-reply-text",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "route-has-button",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route-has-button": {
+      "main": [
+        [
+          {
+            "node": "send-button-reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route-coupon-duplicate": {
+      "main": [
+        [
+          {
+            "node": "coupon-duplicate-reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "coupon-error-reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
+  "active": false,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "staticData": null,
   "nodeGroups": [],
-  "pinData": {},
   "tags": []
 }
