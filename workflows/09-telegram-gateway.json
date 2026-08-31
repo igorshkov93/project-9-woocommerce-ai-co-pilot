@@ -378,11 +378,13 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        864,
-        -112
+        1088,
+        -16
       ],
       "id": "4f32501b-07e0-43d5-a3f4-f11c21e33b9b",
-      "name": "call-ai-agent"
+      "name": "call-ai-agent",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
     },
     {
       "parameters": {
@@ -395,8 +397,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        1088,
-        -208
+        1536,
+        80
       ],
       "id": "f54089d0-7c93-4a21-be43-47f0b88278d1",
       "name": "send-reply-text",
@@ -436,8 +438,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        1088,
-        -16
+        1312,
+        -112
       ],
       "id": "c4026008-be8c-4663-906c-51dee64c34f9",
       "name": "route-has-button"
@@ -470,8 +472,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        1312,
-        -16
+        1536,
+        -112
       ],
       "id": "34ae7f11-ae89-4ba4-b218-ddf227beba25",
       "name": "send-button-reply",
@@ -540,6 +542,32 @@
           "name": "Telegram account"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "   const COMMAND_MAP = {\n     '/ordersqty': 'Сколько заказов сегодня?',\n     '/top5probs': 'Топ-5 проблемных товаров по возвратам',\n     '/writeemail': 'Напиши email-кампанию для брошенных корзин',\n     '/createcoupon': 'Создай новый купон -15% на категорию Электроника',\n     '/digestoftheday': 'Пришли дайджест дня в Slack',\n   };\n\n   const item = $input.first().json;\n   const rawText = item.text || '';\n   const trimmed = rawText.trim();\n\n   const command = Object.keys(COMMAND_MAP).find(\n     (cmd) => trimmed === cmd || trimmed.startsWith(cmd + ' ')\n   );\n\n   return [{\n     json: {\n       ...item,\n       text: command ? COMMAND_MAP[command] : item.text,\n     },\n   }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        -16
+      ],
+      "id": "5c963d82-1bda-432e-99c4-2d1ed1975d2f",
+      "name": "map-command-to-prompt1"
+    },
+    {
+      "parameters": {
+        "jsCode": "   const item = $input.first().json;\n   const clean = (item.reply_text || '')\n     .replace(/\\*\\*/g, '')\n     .replace(/[_*`\\[\\]]/g, '');\n\n   return [{\n     json: {\n       ...item,\n       reply_text: clean,\n     },\n   }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        80
+      ],
+      "id": "6b9a7e1d-9775-42da-8cc8-8f5a01934489",
+      "name": "sanitize-reply-text"
     }
   ],
   "pinData": {},
@@ -595,7 +623,7 @@
         ],
         [
           {
-            "node": "call-ai-agent",
+            "node": "map-command-to-prompt1",
             "type": "main",
             "index": 0
           }
@@ -664,12 +692,12 @@
       "main": [
         [
           {
-            "node": "send-reply-text",
+            "node": "route-has-button",
             "type": "main",
             "index": 0
           },
           {
-            "node": "route-has-button",
+            "node": "sanitize-reply-text",
             "type": "main",
             "index": 0
           }
@@ -699,6 +727,28 @@
         [
           {
             "node": "coupon-error-reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "map-command-to-prompt1": {
+      "main": [
+        [
+          {
+            "node": "call-ai-agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "sanitize-reply-text": {
+      "main": [
+        [
+          {
+            "node": "send-reply-text",
             "type": "main",
             "index": 0
           }
