@@ -146,3 +146,43 @@ Instead:
 - If Gemini Flash's free-tier reply quality proves insufficient for
   interview-facing demos, decision 8 can be revisited without touching
   decisions 1-7 and 9.
+
+## Addendum: Implementation status (31.08.2026)
+
+All 9 decisions above were implemented and confirmed end-to-end against a
+live Telegram bot and a live WooCommerce store, not just individually
+tested sub-workflows. Both entry-point branches of `09-telegram-gateway`
+are built and published: a plain-text message routes into `15-ai-agent`
+(decision 5), and a real button tap on a proposed coupon runs the full
+propose -> button -> `callback_query` -> `13b-tool-confirm-coupon` ->
+real `POST /coupons` circuit, producing an actual coupon in the store.
+
+Two implementation details emerged during the build that are worth
+recording alongside the decisions above:
+
+- **Decision 6 (memory), concrete node**: n8n's window-buffer memory is
+  the **Simple Memory** node. Configured with Session ID bound to the
+  Telegram `chat_id` and Context Window Length = 5.
+- **Decision 9 (button delivery), a non-obvious gotcha**: when the AI
+  Agent's `intermediateSteps` are inspected for a `propose_coupon` tool
+  call, the recorded `observation` is a JSON-stringified **array**
+  (`"[{...}]"`), not a flat object. `build-coupon-button` must
+  `JSON.parse` it and read the first array element before accessing
+  `status`/`category`/etc. - reading the parsed value directly silently
+  fails.
+
+One gap outside the original 9 decisions was found and closed in
+follow-up hardening, not by this ADR: decisions 4 and 5 establish that
+`13b-tool-confirm-coupon` is the only path that can mutate the store, but
+neither decision addresses what the gateway does when `13b` itself
+reports something other than success. In practice `13a-tool-propose-coupon`
+(called internally by `13b`) can also return `invalid_input` or `no_data`
+(malformed input, or a category id that does not exist) - two failure
+statuses this ADR never scoped. Originally the gateway conflated both with
+a genuine duplicate-coupon response, showing the user a "coupon already
+exists" message with no `code`/`coupon_id` to fill in. `09-telegram-gateway`
+now has an additional `route-coupon-duplicate` check ahead of a dedicated
+`coupon-error-reply` node, so a real duplicate, an invalid request, and an
+unresolvable category id each get their own accurate reply to the store
+owner. This does not change decisions 1-9; it closes a response-handling
+gap that sat outside their scope.
