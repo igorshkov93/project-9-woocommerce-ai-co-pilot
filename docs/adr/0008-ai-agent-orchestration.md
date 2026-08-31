@@ -186,3 +186,41 @@ now has an additional `route-coupon-duplicate` check ahead of a dedicated
 unresolvable category id each get their own accurate reply to the store
 owner. This does not change decisions 1-9; it closes a response-handling
 gap that sat outside their scope.
+
+## Addendum: Further hardening (31.08.2026, continued)
+
+Two more gaps were found and closed later in the same session, while
+building on top of this architecture for Step 17 (Slack digest, ADR 0009).
+
+- **`build-coupon-button` observation-parsing bug**: the JSON-stringified-
+  array gotcha documented in decision 9's addendum above was only half
+  guarded against. `Array.isArray(observation)` was checked directly
+  against the raw `observation` value without first parsing it when it
+  arrived as a string - so on at least one live run, the code silently
+  `continue`d past a valid `propose_coupon` result and returned
+  `button: null` even though `13a-tool-propose-coupon` had produced a
+  fully valid `proposed` payload. Fixed by adding an explicit
+  `typeof observation === 'string'` check with `JSON.parse` immediately
+  before the existing `Array.isArray` unwrap.
+- **Fixed Telegram commands now route deterministically**:
+  `09-telegram-gateway` grew a `map-command-to-prompt` Code node, inserted
+  between `route-update-type`'s message branch and `call-ai-agent`. It
+  matches the raw Telegram text against five known slash commands
+  (`/ordersqty`, `/top5probs`, `/writeemail`, `/createcoupon`,
+  `/digestoftheday`) registered in the bot's Telegram menu, and rewrites
+  the text to an explicit natural-language instruction before the AI
+  Agent ever sees it. Free-form text that doesn't match a known command
+  passes through unchanged. This does not replace the AI Agent +
+  tool-calling architecture (decisions 1-9 are unchanged) - it removes
+  reliance on the LLM correctly interpreting a bare slash-command string,
+  while keeping tool-calling as the actual execution mechanism for both
+  fixed commands and free-form requests.
+- **Telegram markdown entity errors**: `send-reply-text` began failing
+  intermittently with `Bad Request: can't parse entities` whenever the
+  agent's LLM-generated reply contained unbalanced markdown (typically
+  `**bold**` markers). A `sanitize-reply-text` Code node was added
+  immediately before `send-reply-text`, stripping `**`, `_`, `` ` ``, `[`,
+  `]` from `reply_text` before it is sent. This trades away bold/italic
+  formatting in Telegram replies for reliability - any AI-generated text
+  is now guaranteed not to break Telegram's entity parser, regardless of
+  what markdown syntax the model produces.
