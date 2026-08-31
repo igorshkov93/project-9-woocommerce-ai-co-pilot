@@ -66,7 +66,7 @@ def load_env(path: Path = ENV_PATH) -> dict[str, str]:
         raise WooError(f"Missing keys in .env: {', '.join(missing)}")
 
     # Environment variables win over the file, which keeps CI overrides simple.
-    for key in REQUIRED_KEYS + ("WOO_VERIFY_SSL",):
+    for key in REQUIRED_KEYS + ("WOO_VERIFY_TLS",):
         override = os.environ.get(key)
         if override:
             env[key] = override
@@ -88,7 +88,7 @@ class WooClient:
             credentials.encode("utf-8")
         ).decode("ascii")
 
-        verify = self.env.get("WOO_VERIFY_SSL", "true").lower() != "false"
+        verify = self.env.get("WOO_VERIFY_TLS", "false").lower() != "false"
         self.verify_ssl = verify
         if verify:
             self.ssl_context = ssl.create_default_context()
