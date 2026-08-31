@@ -1,0 +1,450 @@
+{
+  "name": "16-tool-send-orders-digest",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"date_from\": \"\",\n  \"date_to\": \"\"\n}"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        80
+      ],
+      "id": "60b55d68-7c2c-4822-966a-17ff20dddc57",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "const DateTime = $now.constructor;\n\nconst input = $input.first().json;\nconst businessTz = $env.BUSINESS_TIMEZONE || 'Europe/Kyiv';\nconst DEFAULT_WINDOW_DAYS = 7;\n\nfunction parseDateOnly(value) {\n  if (typeof value !== 'string' || value.trim() === '') return null;\n  const dt = DateTime.fromISO(value.trim(), { zone: businessTz });\n  return dt.isValid ? dt.startOf('day') : null;\n}\n\nconst nowBiz = $now.setZone(businessTz);\nconst todayStart = nowBiz.startOf('day');\n\nlet dateFrom = parseDateOnly(input.date_from);\nlet dateTo = parseDateOnly(input.date_to);\nconst errors = [];\n\nif (input.date_from && !dateFrom) errors.push(`date_from is not a valid date: ${input.date_from}`);\nif (input.date_to && !dateTo) errors.push(`date_to is not a valid date: ${input.date_to}`);\n\nif (!dateFrom && !dateTo) {\n  dateTo = todayStart;\n  dateFrom = todayStart.minus({ days: DEFAULT_WINDOW_DAYS - 1 });\n} else if (dateFrom && !dateTo) {\n  dateTo = todayStart;\n} else if (!dateFrom && dateTo) {\n  dateFrom = dateTo.minus({ days: DEFAULT_WINDOW_DAYS - 1 });\n}\n\nif (dateFrom && dateTo && dateFrom > dateTo) {\n  errors.push(`date_from (${dateFrom.toISODate()}) is after date_to (${dateTo.toISODate()})`);\n}\n\nconst days = dateFrom && dateTo ? Math.round(dateTo.diff(dateFrom, 'days').days) + 1 : null;\n\nreturn [{\n  json: {\n    valid: errors.length === 0,\n    errors,\n    date_from: dateFrom ? dateFrom.toISODate() : null,\n    date_to: dateTo ? dateTo.toISODate() : null,\n    days,\n    coupons_after_utc: todayStart.toUTC().toISO(),\n    coupons_before_utc: nowBiz.toUTC().toISO(),\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        80
+      ],
+      "id": "fdf8c1be-622f-4f19-98c4-e5ff1694b251",
+      "name": "prepare-request"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ec3bd68c-5baa-4c99-9f04-cd78f4362f79",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        80
+      ],
+      "id": "693b005d-fe8f-45c8-8bf8-e994ebcd3537",
+      "name": "route-valid"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nreturn [{\n  json: {\n    status: 'invalid_input',\n    message: input.errors.join('; '),\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        368
+      ],
+      "id": "2360f60f-41d0-46c3-81e1-08d848cc6940",
+      "name": "invalid-input-response"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "HIfuyJ1KcxPswngJ",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/HIfuyJ1KcxPswngJ",
+          "cachedResultName": "11-tool-get-orders-summary"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "compare": true,
+            "date_to": "={{ $json.date_to }}",
+            "date_from": "={{ $json.date_from }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "period",
+              "displayName": "period",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "date_from",
+              "displayName": "date_from",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "date_to",
+              "displayName": "date_to",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "compare",
+              "displayName": "compare",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        672,
+        176
+      ],
+      "id": "a89317db-25e8-4994-a588-aced7f64bbc9",
+      "name": "call-orders-summary"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "GGo46KYLTE4mQgw3",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/GGo46KYLTE4mQgw3",
+          "cachedResultName": "12-tool-get-top-returned-products"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "days": "={{ $json.days }}",
+            "limit": 5,
+            "from": "={{ $json.date_from }}",
+            "to": "={{ $json.date_to }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "from",
+              "displayName": "from",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "to",
+              "displayName": "to",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "days",
+              "displayName": "days",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "limit",
+              "displayName": "limit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        672,
+        -16
+      ],
+      "id": "7cf4bcb4-feee-4a29-ab5f-bdf0f7026eb3",
+      "name": "call-top-returned"
+    },
+    {
+      "parameters": {
+        "url": "=https://woocommerceautomationtraining.local/wp-json/wc/v3/coupons",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "after",
+              "value": "={{ $('prepare-request').item.json.coupons_after_utc }}"
+            },
+            {
+              "name": "before",
+              "value": "={{ $('prepare-request').item.json.coupons_before_utc }}"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        672,
+        -208
+      ],
+      "id": "5e1a4c06-d40d-4d47-85ed-13608b7bab48",
+      "name": "fetch-coupons-today",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "__REPLACE_WITH_YOUR_CREDENTIAL_ID__",
+          "name": "WP Application Password"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const ordersSummary = $('call-orders-summary').first().json;\nconst topReturned = $('call-top-returned').first().json;\nconst couponItems = $('fetch-coupons-today').all().map(item => item.json);\nconst prep = $('prepare-request').first().json;\n\nconst dateFrom = prep.date_from;\nconst dateTo = prep.date_to;\n\nfunction fmtMoney(value, currency) {\n  if (value === null || value === undefined || value === '') return 'н/д';\n  const num = Number(value);\n  if (Number.isNaN(num)) return String(value);\n  return currency ? `${num.toFixed(2)} ${currency}` : num.toFixed(2);\n}\n\nconst blocks = [];\n\nblocks.push({\n  type: 'header',\n  text: { type: 'plain_text', text: `📊 Дайджест заказов: ${dateFrom} – ${dateTo}`, emoji: true },\n});\n\n// Orders summary\nconst m = ordersSummary.metrics || {};\nconst currency = m.currency || '';\nlet ordersText;\nif (ordersSummary.status === 'no_data') {\n  ordersText = '_Заказов за период не найдено._';\n} else {\n  ordersText =\n    `*Заказы:* ${m.orders_count ?? 0}\\n` +\n    `*Выручка (gross):* ${fmtMoney(m.revenue_gross, currency)}\\n` +\n    `*Выручка (net):* ${fmtMoney(m.revenue_net, currency)}\\n` +\n    `*Возвраты:* ${fmtMoney(m.refunds_total, currency)}\\n` +\n    `*Средний чек:* ${fmtMoney(m.aov, currency)}`;\n}\nblocks.push({\n  type: 'section',\n  text: { type: 'mrkdwn', text: `*Сводка заказов*\\n${ordersText}` },\n});\n\nblocks.push({ type: 'divider' });\n\n// Top returned products\nconst totals = topReturned.totals || {};\nconst top = topReturned.top || [];\nlet returnedText;\nif (!top.length) {\n  returnedText = '_Возвратов за период не найдено._';\n} else {\n  const lines = top.map(\n    (p) => `${p.rank}. *${p.name}* — возвращено ${p.units_returned} шт. на ${fmtMoney(p.refund_amount, currency)}`\n  );\n  returnedText =\n    `*Всего возвратов:* ${totals.refunds_count ?? 0}, на сумму ${fmtMoney(totals.refund_amount, currency)}\\n\\n` +\n    lines.join('\\n');\n}\nblocks.push({\n  type: 'section',\n  text: { type: 'mrkdwn', text: `*Топ возвращаемых товаров*\\n${returnedText}` },\n});\n\nblocks.push({ type: 'divider' });\n\n// Coupons created today\nlet couponsText;\nif (!couponItems.length) {\n  couponsText = '_Сегодня купоны не создавались._';\n} else {\n  const lines = couponItems.map((c) => {\n    const suffix = c.discount_type === 'percent' ? '%' : currency;\n    return `• \\`${c.code}\\` — ${c.amount}${suffix} (${c.discount_type})`;\n  });\n  couponsText = lines.join('\\n');\n}\nblocks.push({\n  type: 'section',\n  text: { type: 'mrkdwn', text: `*Купоны, созданные сегодня*\\n${couponsText}` },\n});\n\nconst fallbackText = `Дайджест заказов ${dateFrom} – ${dateTo}`;\n\nreturn [{\n  json: {\n    blocks,\n    text: fallbackText,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        -16
+      ],
+      "id": "8fdb80f5-5dd0-429a-9ef0-603da2bc4cfa",
+      "name": "format-digest"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        896,
+        -32
+      ],
+      "id": "402881c9-ec1f-40c3-8f2d-f3e9b5ee5b9e",
+      "name": "join-digest-sources"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "=     {\n       \"channel\": \"#orders-digest\",\n       \"text\": {{ JSON.stringify($json.text) }},\n       \"blocks\": {{ JSON.stringify($json.blocks) }}\n     }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1328,
+        -16
+      ],
+      "id": "f61f7cd5-f036-40c4-9686-924b66171b0e",
+      "name": "post-slack-digest",
+      "credentials": {
+        "slackApi": {
+          "id": "__REPLACE_WITH_YOUR_CREDENTIAL_ID__",
+          "name": "Slack Orders Digest"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "   const slackResponse = $input.first().json;\n\n   if (slackResponse.ok) {\n     return [{\n       json: {\n         status: 'sent',\n         message: 'Дайджест отправлен в Slack-канал #orders-digest.',\n       },\n     }];\n   }\n\n   return [{\n     json: {\n       status: 'error',\n       message: `Не удалось отправить дайджест в Slack: ${slackResponse.error || 'unknown error'}`,\n     },\n   }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        -16
+      ],
+      "id": "7d90a17b-fa57-421f-a2cd-d4998b769743",
+      "name": "digest-response"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "prepare-request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepare-request": {
+      "main": [
+        [
+          {
+            "node": "route-valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route-valid": {
+      "main": [
+        [
+          {
+            "node": "call-top-returned",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "call-orders-summary",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "fetch-coupons-today",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "invalid-input-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "call-top-returned": {
+      "main": [
+        [
+          {
+            "node": "join-digest-sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "fetch-coupons-today": {
+      "main": [
+        [
+          {
+            "node": "join-digest-sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "call-orders-summary": {
+      "main": [
+        [
+          {
+            "node": "join-digest-sources",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "join-digest-sources": {
+      "main": [
+        [
+          {
+            "node": "format-digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format-digest": {
+      "main": [
+        [
+          {
+            "node": "post-slack-digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "post-slack-digest": {
+      "main": [
+        [
+          {
+            "node": "digest-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "tags": []
+}
