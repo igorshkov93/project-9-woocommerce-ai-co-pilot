@@ -1,0 +1,504 @@
+{
+  "name": "15-ai-agent",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "chat_id",
+              "type": "number"
+            },
+            {
+              "name": "text"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -32
+      ],
+      "id": "023c0682-7b7b-49cd-afc4-3f159028316c",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.text }}",
+        "options": {
+          "systemMessage": "You are an operational assistant for the owner of a WooCommerce electronics/lifestyle store, communicating via Telegram. You are NOT customer-facing - you speak only with the store owner.\n\nYou have access to tools that let you look up real store data (orders, returns, customer/product lookups) and prepare marketing content. Always ground your answers strictly in the data returned by your tools - never invent numbers, product names, customer names, or claims. If a question needs real data, call the relevant tool before answering.\n\nIf a request is ambiguous (e.g. which category, which time period, which customer), ask a short clarifying question instead of guessing.\n\nYou can propose a discount coupon, but you can NEVER create one yourself - coupon creation only happens when the store owner taps a Confirm button in Telegram. If you propose a coupon, clearly state the terms (category, discount percent, expiry) so the owner can decide.\n\nKeep replies concise and to the point - this is a working tool for a busy store owner, not customer support.",
+          "returnIntermediateSteps": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        544,
+        -32
+      ],
+      "id": "3787cce1-5086-48a9-9f46-985bff8c26b8",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        192
+      ],
+      "id": "cb534749-0974-4e01-982a-1e887e0f0f0c",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "__REPLACE_WITH_YOUR_CREDENTIAL_ID__",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.chat_id }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        640,
+        368
+      ],
+      "id": "64508f98-63ed-4fc7-835c-ef71a7aaefc6",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "description": "Look up a store entity (category, product, or customer) by name to get its ID and canonical name. Use this FIRST whenever the user refers to something by name rather than ID (e.g. \"Electronics category\", \"customer Dmytro\", \"Wireless Earbuds Pro\"). Returns a list of matching entities ranked by relevance - if zero or multiple ambiguous matches come back, ask the user to clarify rather than guessing which one they meant.",
+        "workflowId": {
+          "__rl": true,
+          "value": "mybfI2XKzpsy7MWh",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/mybfI2XKzpsy7MWh",
+          "cachedResultName": "10-tool-resolve-entity"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "limit": "={{ $fromAI('limit', 'Maximum number of results to return, 1-10. Default 3 if not specified.', 'number', 3) }}",
+            "query": "={{ $fromAI('query', 'The search text - the product or category name (or partial name) the user mentioned.', 'string') }}",
+            "entity_type": "={{ $fromAI('entity_type', 'Must be exactly \"product\" or \"category\". Never use this tool for customer lookups.', 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "query",
+              "displayName": "query",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "entity_type",
+              "displayName": "entity_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "limit",
+              "displayName": "limit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        352,
+        192
+      ],
+      "id": "c7fc3c6d-ba90-4fa1-96c4-7d956deb477e",
+      "name": "resolve_entity"
+    },
+    {
+      "parameters": {
+        "description": "Get order counts, revenue, refunds, and status breakdown for a time period, with an automatic comparison to the prior equivalent period. Use this whenever the user asks about sales, orders, revenue, or refunds. period must be one of: today, yesterday, last_7_days, last_30_days, or custom (in which case date_from and date_to are also required, format YYYY-MM-DD, max 92-day window).",
+        "workflowId": {
+          "__rl": true,
+          "value": "HIfuyJ1KcxPswngJ",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/HIfuyJ1KcxPswngJ",
+          "cachedResultName": "11-tool-get-orders-summary"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "compare": "={{ $fromAI('compare', 'Whether to include a comparison to the previous equivalent period. Default true unless the user explicitly says they don\\'t want a comparison.', 'boolean', true) }}",
+            "period": "={{ $fromAI('period', 'today, yesterday, last_7_days, last_30_days, custom. Default to \"today\" if the user doesn\\'t specify a time period.', 'string', 'today') }}",
+            "date_from": "={{ $fromAI('date_from', 'Required ONLY when period is \"custom\". Format YYYY-MM-DD. Leave empty otherwise.', 'string', '') }}",
+            "date_to": "={{ $fromAI('date_to', 'Required ONLY when period is \"custom\". Format YYYY-MM-DD. Leave empty otherwise.', 'string', '') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "period",
+              "displayName": "period",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "date_from",
+              "displayName": "date_from",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "date_to",
+              "displayName": "date_to",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "compare",
+              "displayName": "compare",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        496,
+        192
+      ],
+      "id": "1ba1c76d-492c-4cd3-b8cb-a5d0d32d2f2c",
+      "name": "get_orders_summary"
+    },
+    {
+      "parameters": {
+        "description": "Get the products with the most refunds/returns in a time window, ranked by return volume. Use this when the user asks about returns, refunds by product, or which products get sent back most often. Defaults to the last 30 days if no window is specified; an explicit from/to date range can be given instead of days.",
+        "workflowId": {
+          "__rl": true,
+          "value": "GGo46KYLTE4mQgw3",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/GGo46KYLTE4mQgw3",
+          "cachedResultName": "12-tool-get-top-returned-products"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "days": "={{ $fromAI('days', 'Size of the lookback window in days ending today, 1-366. Default 30. Ignored if \"from\" is provided.', 'number', 30) }}",
+            "limit": "={{ $fromAI('limit', 'Maximum number of products to return, 1-50. Default 5 if not specified.', 'number', 5) }}",
+            "from": "={{ $fromAI('from', 'Start date, format YYYY-MM-DD. Optional - omit to calculate from \"days\" instead.', 'string', '') }}",
+            "to": "={{ $fromAI('to', 'End date, format YYYY-MM-DD. Optional - defaults to today if omitted.', 'string', '') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "from",
+              "displayName": "from",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "to",
+              "displayName": "to",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "days",
+              "displayName": "days",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "limit",
+              "displayName": "limit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        704,
+        192
+      ],
+      "id": "6bc64a3f-6d23-4745-aa3c-c1a3b404b5cf",
+      "name": "get_top_returned_products"
+    },
+    {
+      "parameters": {
+        "description": "Preview a percentage-discount coupon for a product category WITHOUT creating anything in the store. Requires category_id (numeric WooCommerce category ID - use resolve_entity first if the user only gave a category name), discount_percent, and expires_days (default 14 if not specified). Applies automatically to all subcategories of the given category. Returns status \"proposed\" with the exact terms, or \"duplicate\" if an equivalent coupon already exists. IMPORTANT: this tool never creates a coupon - only the store owner tapping the Confirm button in Telegram can do that. After calling this tool, tell the user the proposed terms in plain language; do not claim the coupon has been created.",
+        "workflowId": {
+          "__rl": true,
+          "value": "pq7kv3LFX1sB9Eaf",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/pq7kv3LFX1sB9Eaf",
+          "cachedResultName": "13a-tool-propose-coupon"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "category_id": "={{ $fromAI('category_id', `The numeric WooCommerce category ID. Resolve this first with resolve_entity if the user only gave a category name.`, 'number') }}",
+            "discount_percent": "={{ $fromAI('discount_percent', `The percentage discount to propose, e.g. 15 for 15% off.`, 'number') }}",
+            "expires_days": "={{ $fromAI('expires_days', 'Number of days until the coupon expires. Default 14 if the user doesn\\'t specify.', 'number', 14) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "category_id",
+              "displayName": "category_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "discount_percent",
+              "displayName": "discount_percent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "expires_days",
+              "displayName": "expires_days",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        816,
+        192
+      ],
+      "id": "5dccfdf1-965a-41d6-8835-1e11f773417f",
+      "name": "propose_coupon"
+    },
+    {
+      "parameters": {
+        "description": "Draft a cart-recovery email for an abandoned cart, written by an LLM and grounded only in real cart data (products, quantities, prices, customer name) - it never mentions discounts or coupon codes, since none are issued by this tool. If cart_id is omitted, automatically picks the highest-value non-recovered abandoned cart. Returns status \"ok\" with subject/body, or \"no_data\" if there are no eligible abandoned carts.",
+        "workflowId": {
+          "__rl": true,
+          "value": "qcjOmx2r0K6bTmP2",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/qcjOmx2r0K6bTmP2",
+          "cachedResultName": "14-tool-draft-abandoned-cart-email"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "cart_id": "={{ ('cart_id', `Optional. The specific abandoned cart ID to draft an email for. Omit this to let the tool automatically pick the highest-value unrecovered cart`, 'string'){{ $fromAI('cart_id', 'Optional. The specific abandoned cart ID to draft an email for. Omit this to let the tool automatically pick the highest-value unrecovered cart.', 'string', '') }} }}"
+          },
+          "matchingColumns": [
+            "cart_id"
+          ],
+          "schema": [
+            {
+              "id": "cart_id",
+              "displayName": "cart_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        912,
+        192
+      ],
+      "id": "775ea73d-eff9-4c90-8d75-13307ca2d85d",
+      "name": "draft_abandoned_cart_email"
+    },
+    {
+      "parameters": {
+        "jsCode": "const agentOutput = $input.first().json;\nconst replyText = agentOutput.output ?? '';\nconst steps = agentOutput.intermediateSteps ?? [];\n\nlet button = null;\n\nfor (const step of steps) {\n  const toolName = step.action?.tool;\n  if (toolName !== 'propose_coupon') continue;\n\n  let observation = step.observation;\n  if (typeof observation === 'string') {\n    try {\n      observation = JSON.parse(observation);\n    } catch (e) {\n      continue;\n    }\n  }\n\n  // Workflow Tool observations come back in n8n's standard items shape:\n  // an array of { json: {...} } (or, seen in practice, an array of the\n  // raw json objects directly) - unwrap either form to a plain object.\n  if (Array.isArray(observation)) {\n    const first = observation[0];\n    observation = first?.json ?? first ?? {};\n  }\n\n  if (observation?.status !== 'proposed') continue;\n\n  const toolInput = step.action.toolInput ?? {};\n  const categoryId = toolInput.category_id;\n  const discountPercent = toolInput.discount_percent;\n  const expiresDays = toolInput.expires_days;\n\n  if (categoryId === undefined || discountPercent === undefined || expiresDays === undefined) {\n    continue;\n  }\n\n  const categoryName = observation.category?.name ?? `category ${categoryId}`;\n\n  button = {\n    label: `✅ Confirm ${discountPercent}% off ${categoryName}`,\n    callback_data: `cc:${categoryId}:${discountPercent}:${expiresDays}`,\n  };\n}\n\nreturn [{\n  json: {\n    reply_text: replyText,\n    button,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -32
+      ],
+      "id": "9c21224e-58b2-476b-a666-29228cf91f5c",
+      "name": "build-coupon-button"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "resolve_entity": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_orders_summary": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_top_returned_products": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "propose_coupon": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "draft_abandoned_cart_email": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "build-coupon-button",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "tags": []
+}
