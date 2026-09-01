@@ -1,7 +1,5 @@
 {
   "name": "12-tool-get-top-returned-products",
-  "description": null,
-  "active": false,
   "nodes": [
     {
       "parameters": {
@@ -12,7 +10,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        0
+        -32
       ],
       "id": "b231654b-8568-4b2f-93f3-91061d7eac2b",
       "name": "tool-input"
@@ -24,8 +22,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        208,
-        0
+        224,
+        -32
       ],
       "id": "11ec2394-b041-4722-b823-3fe45083c52a",
       "name": "prepare-request"
@@ -58,8 +56,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        416,
-        0
+        448,
+        -32
       ],
       "id": "401cc3c2-773d-4807-ba29-d9e7453192ae",
       "name": "route-valid"
@@ -71,8 +69,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        624,
-        96
+        672,
+        64
       ],
       "id": "21728b58-30c6-41b6-b9c1-ad4c813f4bf0",
       "name": "invalid-input-response"
@@ -145,8 +143,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        624,
-        -96
+        672,
+        -128
       ],
       "id": "02130e68-6638-4130-8fbc-fe24690f9352",
       "name": "fetch-orders",
@@ -160,8 +158,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        832,
-        -96
+        896,
+        -128
       ],
       "id": "67a08f8f-c2a5-49a6-b529-f5dfe6228b29",
       "name": "select-refunded-orders"
@@ -194,8 +192,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1040,
-        -96
+        1344,
+        -48
       ],
       "id": "70f1c36e-eefd-4adf-b316-aefa8996f778",
       "name": "fetch-refund-details",
@@ -209,13 +207,48 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1248,
-        -96
+        1568,
+        -128
       ],
       "id": "b1c5dff6-6991-4db1-a74d-5637b15ed74c",
       "name": "aggregate-returns"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "af9c3037-ede8-423a-870a-05da470dbaf3",
+              "leftValue": "={{ $json.noRefunds }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1120,
+        -128
+      ],
+      "id": "835ce05e-b92e-4e2b-b1ea-b53dbc05d4b4",
+      "name": "route-has-refunds"
     }
   ],
+  "pinData": {},
   "connections": {
     "tool-input": {
       "main": [
@@ -272,7 +305,7 @@
       "main": [
         [
           {
-            "node": "fetch-refund-details",
+            "node": "route-has-refunds",
             "type": "main",
             "index": 0
           }
@@ -289,14 +322,31 @@
           }
         ]
       ]
+    },
+    "route-has-refunds": {
+      "main": [
+        [
+          {
+            "node": "aggregate-returns",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "fetch-refund-details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
+  "active": false,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "staticData": null,
   "nodeGroups": [],
-  "pinData": {},
   "tags": []
 }
