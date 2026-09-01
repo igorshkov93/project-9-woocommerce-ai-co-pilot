@@ -1,7 +1,5 @@
 {
   "name": "14-tool-draft-abandoned-cart-email",
-  "description": null,
-  "active": false,
   "nodes": [
     {
       "parameters": {
@@ -234,6 +232,7 @@
       "name": "ok-response"
     }
   ],
+  "pinData": {},
   "connections": {
     "When Executed by Another Workflow": {
       "main": [
@@ -349,12 +348,11 @@
       ]
     }
   },
+  "active": false,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "staticData": null,
   "nodeGroups": [],
-  "pinData": {},
   "tags": []
 }
