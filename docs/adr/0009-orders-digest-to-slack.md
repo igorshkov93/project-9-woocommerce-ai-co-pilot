@@ -180,3 +180,53 @@ exactly what Slack receives.
   issue, not a bug in this project. Retry On Fail was enabled on
   `call-ai-agent` (3 tries, 5s wait) so these transient errors resolve
   automatically instead of surfacing as a dead Telegram reply.
+
+## Addendum: Missing branch in `12-tool-get-top-returned-products` (01.09.2026)
+
+The first live end-to-end test of the digest through the actual Telegram
+`/digestoftheday` command (as opposed to individually testing each
+sub-workflow, as in the 31.08 addendum above) failed: "Обнаружена ошибка
+при попытке отправить дайджест в Slack." This is a data-source bug in
+`12-tool-get-top-returned-products`, not in `16-tool-send-orders-digest`
+itself, but it only ever surfaced through the digest's real-world input
+range (a period with zero refunded orders), so it is recorded here rather
+than against `12`'s own ADR.
+
+`select-refunded-orders` and `fetch-refund-details` were wired directly
+together with no branch between them. When there are no refunded orders in
+the requested window, `select-refunded-orders` returns
+`{noRefunds: true, ordersScanned, excludedByStatus}` - a shape with no
+`refundsUrl` field - and `fetch-refund-details` (an HTTP Request node
+reading `refundsUrl` from its input) failed with "URL parameter must be a
+string, got undefined". `aggregate-returns`, further downstream, already
+had correct handling for this case (`if (selection.noRefunds) return
+{status: 'no_data', ...}`, reading `select-refunded-orders`'s output
+directly via `$('select-refunded-orders')` with an early return before
+touching `$input.all()`) - the workflow was simply missing the canvas
+branch needed to reach that handling instead of the refund-detail fetch.
+
+Fixed by inserting an IF node, `route-has-refunds` (condition:
+`{{$json.noRefunds}}` is true), between `select-refunded-orders` and
+`fetch-refund-details`: true routes directly to `aggregate-returns`
+(skipping the now-unnecessary detail fetch), false preserves the original
+`fetch-refund-details` -> `aggregate-returns` path.
+
+One process note worth keeping: the first attempt at this rewiring
+accidentally rerouted the *existing* `fetch-refund-details -> aggregate-returns`
+connection onto the new IF node's true output instead of adding a new
+connection, silently dropping the has-refunds path - not visible by eye on
+the canvas, only caught via `git diff` on the sanitized export. Both
+branches (no-refunds, forced via pinned mock data on a future date with no
+orders; has-refunds, via pinned mock data on a real range containing a
+refund) were re-tested live after the connection was restored, confirming
+`status: 'no_data'` and `status: 'ok'` with real refund data respectively.
+The general lesson - re-test every branch touched by a canvas rewire, and
+verify against the actual exported JSON rather than the canvas's visual
+appearance - is already recorded in the project's shared n8n-gotchas list
+and applies beyond this one fix.
+
+This fix was subsequently confirmed live twice more in this session: once
+through a full `/digestoftheday` run (the digest reaching `#orders-digest`
+with real orders, returns, and coupons), and once through `/top5probs`
+(which calls `12-tool-get-top-returned-products` directly, independent of
+the digest).
