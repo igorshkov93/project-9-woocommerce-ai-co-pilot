@@ -1,4 +1,4 @@
-[English](README.md) | 🌐 **Українська** | [Русский](README.ru.md)
+[English](README.md) | 🌐 **Українська**
 
 # WooCommerce AI Co-pilot
 
